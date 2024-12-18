@@ -84,7 +84,7 @@ print("-------LLM Chapter Summary Generation---------")
 #print(text)
 #print("Number of chars: ", str(len(text)))
 
-def get_summaries(transcript, chain):
+def get_summaries(transcript):
 
     for i in range(0, len(transcript)):
         doc_in = [transcript[i]]
@@ -155,7 +155,7 @@ def get_chunked_docs(asr_docs, chunk_size=1000):
 
 
 docs = get_chunked_docs(docs, chunk_size=1000)
-get_summaries(docs, chain) #, chunk_size=1000) #61000) #5000)
+get_summaries(docs) #, chunk_size=1000) #61000) #5000)
 print("Summary Results\n")
 print(docs)
 end_time = time.time()
