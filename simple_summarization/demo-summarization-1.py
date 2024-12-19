@@ -33,15 +33,17 @@ print("Audio file: ", args.audio_file)
 #input("Press Enter to continue...")
 # 
 
-start_time = time.time()
+#start_time = time.time()
 
 # Edge local Speech-to-Text: https://huggingface.co/OpenVINO/distil-whisper-tiny-int4-ov
 # Note: Requires LangChain patch
-asr_loader = OpenVINOSpeechToTextLoader(args.audio_file, args.asr_model_id, device=args.device)
-docs = asr_loader.load()
-print("ASR docs created: ", len(docs))
+#asr_loader = OpenVINOSpeechToTextLoader(args.audio_file, args.asr_model_id, device=args.device)
+#docs = asr_loader.load()
+#print("ASR docs created: ", len(docs))
 #from langchain_core.load import dumpd, dumps, load, loads
 #print("ARS results: ", docs)
+with open('mit_transcript.txt', 'r') as f:
+    text = f.read()
 #with open('LowerPrimary-Speakandwrite-transcript-asdoc.txt', 'w') as f:
 #    f.write(str(docs))
 #quit()
@@ -53,6 +55,57 @@ print("ASR docs created: ", len(docs))
 #    print(docs)
 #quit()
 # Edge local LLM inference for text summarization
+
+# get text embeddings
+from langchain_community.embeddings import OpenVINOEmbeddings
+model_name = "sentence-transformers/all-mpnet-base-v2"
+model_kwargs = {"device": args.device}
+encode_kwargs = {"mean_pooling": True, "normalize_embeddings": True}
+
+ov_embeddings = OpenVINOEmbeddings(
+    model_name_or_path=model_name,
+    model_kwargs=model_kwargs,
+    encode_kwargs=encode_kwargs,
+)
+#text_embs = ov_embeddings.embed_query(text)
+
+# Data Science
+import numpy as np
+from sklearn.cluster import KMeans
+
+start_time = time.time()
+
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=1000)
+docs = text_splitter.create_documents([text])
+num_documents = len(docs)
+print (f"Generatds transcript into  {num_documents} documents")
+# 768 dimensional
+vectors = ov_embeddings.embed_documents([x.page_content for x in docs])
+num_clusters = 13
+kmeans = KMeans(n_clusters=num_clusters, random_state=42).fit(vectors)
+print("Kmeans: ", kmeans.labels_)
+
+# Find the closest embeddings to the centroids
+
+# Create an empty list that will hold your closest points
+closest_indices = []
+
+# Loop through the number of clusters you have
+for i in range(num_clusters):
+    # Get the list of distances from that particular cluster center
+    distances = np.linalg.norm(vectors - kmeans.cluster_centers_[i], axis=1)
+                
+    # Find the list position of the closest one (using argmin to find the smallest distance)
+    closest_index = np.argmin(distances)
+                            
+    # Append that position to your closest indices list
+    closest_indices.append(closest_index)
+
+selected_indices = sorted(closest_indices)
+print("indices/chunks selected: ", selected_indices)
+
+selected_docs = [docs[doc] for doc in selected_indices]
+
 print("Starting LLM inference...")
 model_cache_available = os.path.exists("./" + str(args.model_id))
 ov_config = {"PERFORMANCE_HINT": "LATENCY", "NUM_STREAMS": "1", "CACHE_DIR": "./cache-ov-models"}
@@ -85,14 +138,19 @@ print("-------LLM Chapter Summary Generation---------")
 #print("Number of chars: ", str(len(text)))
 
 def get_summaries(transcript):
-
     for i in range(0, len(transcript)):
         doc_in = [transcript[i]]
         text = docs_loader.format_docs(doc_in)
+#        print("Summaririze this: ", text)
+#        print('\n\n')
+#        continue
 
         # sumllama
         instruction = "Please summarize the input document."
         row_json = [{"role": "user", "content": f"Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n{instruction}\n\n### Input:\n{text}\n\n### Response:\n"}]        
+
+        row_json = [{"role": "user", "content": f"Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\nYou are a helpful assistant. The provided text contains material from an educational lecture. The chapterization should privde main topici sentence and a short summary of the material. The sections should be organized similar to the following example:\ntopic: \"Greetings and Class Introduction\"\nsummary: \"The teacher starts the session with greetings and pleasantries, creating a warm and positive atmosphere. By checking on students' well-being, the teacher fosters engagement and a sense of community, laying the groundwork for effective learning and connection.\"\n\n### Input:\n{text}\n\n### Response:\n"}]
+
         formatted_prompt = ov_llm.pipeline.tokenizer.apply_chat_template(row_json, tokenize=False)
         summary = ov_llm.invoke(formatted_prompt)
         # remove LLM non-essential text
@@ -154,10 +212,25 @@ def get_chunked_docs(asr_docs, chunk_size=1000):
     return chunked_docs
 
 
-docs = get_chunked_docs(docs, chunk_size=1000)
+#docs = get_chunked_docs(docs, chunk_size=1000)
+#docs = selected_docs
+docs = [Document(page_content=docs_loader.format_docs(selected_docs),
+        metadata={
+            "language": 'en',
+            "summary" : '',
+            "topic": '',
+            "start": '',
+            "end": ''
+        })]
 get_summaries(docs) #, chunk_size=1000) #61000) #5000)
 print("Summary Results\n")
-print(docs)
+#print(docs)
+
+for i in range(0, len(docs)):
+    doc = docs[i]
+    print(i+1, ") ", doc.metadata["summary"])
+    print('\n')
+
 end_time = time.time()
 print("\n\n")
 print("LLM inference took: ", end_time - start_time, " (seconds) / ", (end_time-start_time)/60, " (minutes)")
