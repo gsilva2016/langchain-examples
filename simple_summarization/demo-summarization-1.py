@@ -14,7 +14,7 @@ from langchain_text_splitters import CharacterTextSplitter
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import ast
 
-MAX_NEW_TOKENS = 8040
+MAX_NEW_TOKENS = 5040
 
 parser = argparse.ArgumentParser()
 parser.add_argument("audio_file")
@@ -39,6 +39,7 @@ print("Audio file: ", args.audio_file)
 # Note: Requires LangChain patch
 #asr_loader = OpenVINOSpeechToTextLoader(args.audio_file, args.asr_model_id, device=args.device)
 #docs = asr_loader.load()
+#text = docs_loader.format_docs(docs)
 #print("ASR docs created: ", len(docs))
 #from langchain_core.load import dumpd, dumps, load, loads
 #print("ARS results: ", docs)
@@ -81,7 +82,7 @@ num_documents = len(docs)
 print (f"Generatds transcript into  {num_documents} documents")
 # 768 dimensional
 vectors = ov_embeddings.embed_documents([x.page_content for x in docs])
-num_clusters = 13
+num_clusters = 10
 kmeans = KMeans(n_clusters=num_clusters, random_state=42).fit(vectors)
 print("Kmeans: ", kmeans.labels_)
 
@@ -105,6 +106,7 @@ selected_indices = sorted(closest_indices)
 print("indices/chunks selected: ", selected_indices)
 
 selected_docs = [docs[doc] for doc in selected_indices]
+print("selected docs: ", len(selected_docs))
 
 print("Starting LLM inference...")
 model_cache_available = os.path.exists("./" + str(args.model_id))
@@ -113,15 +115,16 @@ ov_llm = HuggingFacePipeline.from_model_id(
     model_id=args.model_id,
     task="text-generation",
     backend="openvino",
-    model_kwargs={"device": args.device, "ov_config": ov_config, "export": True if not model_cache_available else False}, # used for invoke
+#    batch_size=8,
+    model_kwargs={"device": args.device, "ov_config": ov_config, "export": False if not model_cache_available else False}, # used for invoke
     pipeline_kwargs={"max_new_tokens": MAX_NEW_TOKENS, "do_sample": True, "top_k": 10, "temperature": 1.0, "return_full_text": False, "repetition_penalty": 1.0, "encoder_repetition_penalty": 1.0, "use_cache": True},
 )
 ov_llm.pipeline.tokenizer.pad_token_id = ov_llm.pipeline.tokenizer.eos_token_id
-if not os.path.exists("./" + str(args.model_id)):
-    ov_llm.pipeline.model.save_pretrained("./" + str(args.model_id))
-    ov_llm.pipeline.tokenizer.save_pretrained("./" + str(args.model_id))
-else:
-    print("Using OpenVINO model cache")
+#if not os.path.exists("./" + str(args.model_id)):
+#    ov_llm.pipeline.model.save_pretrained("./" + str(args.model_id))
+#    ov_llm.pipeline.tokenizer.save_pretrained("./" + str(args.model_id))
+#else:
+#    print("Using OpenVINO model cache")
 
 print("-------LLM Chapter Summary Generation---------")
 # load ASR or text file for debugging
@@ -138,24 +141,33 @@ print("-------LLM Chapter Summary Generation---------")
 #print("Number of chars: ", str(len(text)))
 
 def get_summaries(transcript):
+    #print("len trans: ", len(transcript))
+    #print("trans[0]: ", len(docs_loader.format_docs([transcript[0]])))
+    #quit()
     for i in range(0, len(transcript)):
         doc_in = [transcript[i]]
         text = docs_loader.format_docs(doc_in)
-#        print("Summaririze this: ", text)
+#        print("Summaririze this: ", len(text), " ", text)
+#        print("-------------------------")
 #        print('\n\n')
+
 #        continue
 
         # sumllama
         instruction = "Please summarize the input document."
         row_json = [{"role": "user", "content": f"Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n{instruction}\n\n### Input:\n{text}\n\n### Response:\n"}]        
 
-        row_json = [{"role": "user", "content": f"Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\nYou are a helpful assistant. The provided text contains material from an educational lecture. The chapterization should privde main topici sentence and a short summary of the material. The sections should be organized similar to the following example:\ntopic: \"Greetings and Class Introduction\"\nsummary: \"The teacher starts the session with greetings and pleasantries, creating a warm and positive atmosphere. By checking on students' well-being, the teacher fosters engagement and a sense of community, laying the groundwork for effective learning and connection.\"\n\n### Input:\n{text}\n\n### Response:\n"}]
+        row_json = [{"role": "user", "content": f"Write a response that appropriately completes the request.\n\n### Instruction:\nYou are a helpful assistant. The provided text contains material from an educational lecture. Chapterize the text by providing the main topic sentences and short summaries of the material. The sections should be organized similar to the following example:\ntopic: \"Greetings and Class Introduction\"\nsummary: \"The teacher starts the session with greetings and pleasantries, creating a warm and positive atmosphere. By checking on students' well-being, the teacher fosters engagement and a sense of community, laying the groundwork for effective learning and connection.\"\n\n### Input:\n{text}\n\n### Response:\n"}]
 
         formatted_prompt = ov_llm.pipeline.tokenizer.apply_chat_template(row_json, tokenize=False)
         summary = ov_llm.invoke(formatted_prompt)
         # remove LLM non-essential text
         # assistant\n\n
         summary = summary.replace('assistant\n\n', '')
+        print("Summaririze this: ", len(text), " ", text)
+        print("\n--Chapterization: ", summary)
+        print("-------------------------")
+        print('\n\n')
         transcript[i].metadata["summary"] = summary
 
 
@@ -214,6 +226,24 @@ def get_chunked_docs(asr_docs, chunk_size=1000):
 
 #docs = get_chunked_docs(docs, chunk_size=1000)
 #docs = selected_docs
+
+#text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=0)
+#print("Selected docs text size: ", len(docs_loader.format_docs(selected_docs)), " docs: " , len(selected_docs))
+#selected_docs = text_splitter.create_documents([docs_loader.format_docs(selected_docs)])
+#print("After selected docs text size: ", len(docs_loader.format_docs(selected_docs)), " docs: ", len(selected_docs))
+
+#docs = [selected_docs[idx] for idx in selected_indices]
+#docs = []
+#for idx in selected_docs:
+#    docs.append(Document(page_content=selected_docs[i].page_content,
+#        metadata={
+#            "language": 'en',
+#            "summary" : '',
+#            "topic": '',
+#            "start": '',
+#            "end": ''
+#        }))
+
 docs = [Document(page_content=docs_loader.format_docs(selected_docs),
         metadata={
             "language": 'en',
@@ -222,6 +252,8 @@ docs = [Document(page_content=docs_loader.format_docs(selected_docs),
             "start": '',
             "end": ''
         })]
+
+
 get_summaries(docs) #, chunk_size=1000) #61000) #5000)
 print("Summary Results\n")
 #print(docs)
