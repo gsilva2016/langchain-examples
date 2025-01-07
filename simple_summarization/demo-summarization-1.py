@@ -21,6 +21,8 @@ parser.add_argument("audio_file")
 parser.add_argument("--model_id", nargs="?", default="llmware/llama-3.2-3b-instruct-ov")
 parser.add_argument("--asr_model_id", nargs="?", default="distil-whisper/distil-small.en")
 parser.add_argument("--device", nargs="?", default="GPU")
+parser.add_argument("--asr_batch_size", default=1, type=int)
+parser.add_argument("--asr_load_in_8bit", default=False, action="store_true")
 args = parser.parse_args()
 
 # Print Args
@@ -28,6 +30,8 @@ print("LangChain OpenVINO ASR+LLM - Video/Audio Summarization Demo")
 print("This demonstrates LangChain using OpenVINO for ASR+LLM Video/Audio Summarization")
 print("LLM model_id: ", args.model_id)
 print("ASR model_id: ", args.asr_model_id)
+print("ASR batch_size: ", args.asr_batch_size)
+print("ASR load_in_8bit: ", args.asr_load_in_8bit)
 print("Inference device  : ", args.device)
 print("Audio file: ", args.audio_file)
 #input("Press Enter to continue...")
@@ -37,14 +41,15 @@ print("Audio file: ", args.audio_file)
 
 # Edge local Speech-to-Text: https://huggingface.co/OpenVINO/distil-whisper-tiny-int4-ov
 # Note: Requires LangChain patch
-#asr_loader = OpenVINOSpeechToTextLoader(args.audio_file, args.asr_model_id, device=args.device)
-#docs = asr_loader.load()
-#text = docs_loader.format_docs(docs)
+asr_loader = OpenVINOSpeechToTextLoader(args.audio_file, args.asr_model_id, device=args.device, load_in_8bit=args.asr_load_in_8bit, batch_size=args.asr_batch_size)
+docs = asr_loader.load()
+text = docs_loader.format_docs(docs)
+#quit()
 #print("ASR docs created: ", len(docs))
 #from langchain_core.load import dumpd, dumps, load, loads
 #print("ARS results: ", docs)
-with open('mit_transcript.txt', 'r') as f:
-    text = f.read()
+#with open('mit_transcript.txt', 'r') as f:
+#    text = f.read()
 #with open('LowerPrimary-Speakandwrite-transcript-asdoc.txt', 'w') as f:
 #    f.write(str(docs))
 #quit()

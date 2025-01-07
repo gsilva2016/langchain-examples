@@ -11,4 +11,4 @@ MODEL_ID="llmware/llama-3.2-3b-instruct-ov"
 #MODEL_ID=llmware/dolphin-2.9.3-mistral-7b-32k-ov
 
 echo "Run Video Summarization"
-python3 demo-summarization-1.py --model_id $MODEL_ID --device "CPU" $INPUT_FILE
+python3 demo-summarization-1.py --model_id $MODEL_ID --device "GPU" $INPUT_FILE --asr_batch_size 4 --asr_load_in_8bit
