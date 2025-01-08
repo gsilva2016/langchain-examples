@@ -23,12 +23,14 @@ parser.add_argument("--asr_model_id", nargs="?", default="distil-whisper/distil-
 parser.add_argument("--device", nargs="?", default="GPU")
 parser.add_argument("--asr_batch_size", default=1, type=int)
 parser.add_argument("--asr_load_in_8bit", default=False, action="store_true")
+parser.add_argument("--llm_batch_size", default=2, type=int)
 args = parser.parse_args()
 
 # Print Args
 print("LangChain OpenVINO ASR+LLM - Video/Audio Summarization Demo")
 print("This demonstrates LangChain using OpenVINO for ASR+LLM Video/Audio Summarization")
 print("LLM model_id: ", args.model_id)
+print("LLM batch_size: ", args.llm_batch_size)
 print("ASR model_id: ", args.asr_model_id)
 print("ASR batch_size: ", args.asr_batch_size)
 print("ASR load_in_8bit: ", args.asr_load_in_8bit)
@@ -120,7 +122,7 @@ ov_llm = HuggingFacePipeline.from_model_id(
     model_id=args.model_id,
     task="text-generation",
     backend="openvino",
-#    batch_size=8,
+    batch_size=args.llm_batch_size,
     model_kwargs={"device": args.device, "ov_config": ov_config, "export": False if not model_cache_available else False}, # used for invoke
     pipeline_kwargs={"max_new_tokens": MAX_NEW_TOKENS, "do_sample": True, "top_k": 10, "temperature": 1.0, "return_full_text": False, "repetition_penalty": 1.0, "encoder_repetition_penalty": 1.0, "use_cache": True},
 )
