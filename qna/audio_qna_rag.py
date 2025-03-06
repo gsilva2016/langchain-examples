@@ -2,9 +2,8 @@ import argparse
 import time
 import os
 from langchain_huggingface import HuggingFacePipeline
-from langchain_community.document_loaders import OpenVINOSpeechToTextLoader
-from langchain_community.tools import OpenVINOText2SpeechTool
-from langchain_community.tools import OpenAIText2SpeechTool
+from langchain_openvino_asr import OpenVINOSpeechToTextLoader
+from langchain_openai_tts import OpenAIText2SpeechTool
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 
 from langchain_core.runnables import RunnablePassthrough
@@ -19,7 +18,7 @@ import docs_loader_utils as docs_loader
 import ast
 import sounddevice as sd
 import soundfile as sf
-
+from pathlib import Path
 
 MAX_NEW_TOKENS = 200
 
@@ -65,6 +64,11 @@ if args.rag:
     db = docs_loader.load_docs(embeddings, False)
 
 print("Loading ASR...")
+check_audio_file = Path(args.audio_file)
+if args.demo_mode and not check_audio_file.exists():
+    # create empty file so ASR can initialize
+    check_audio_file.touch()
+
 asr_loader = OpenVINOSpeechToTextLoader(args.audio_file, 
         args.asr_model_id, 
         device=args.device, 
@@ -100,10 +104,7 @@ ov_llm.pipeline.tokenizer.pad_token_id = ov_llm.pipeline.tokenizer.eos_token_id
 print("Loading TTS...")
 tts = None
 if not args.tts_model_id == "kokoro":
-    tts = OpenVINOText2SpeechTool(model_id=args.tts_model_id,
-        device="CPU", 
-        load_in_8bit=True
-    )
+    raise NotImplemented("Kokoro is only supported at this time.")
 else:
     tts = OpenAIText2SpeechTool(
             model_id=args.tts_model_id,

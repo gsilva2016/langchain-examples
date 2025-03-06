@@ -2,7 +2,7 @@ import argparse
 import time
 import os
 from langchain_huggingface import HuggingFacePipeline
-from langchain_community.document_loaders import OpenVINOSpeechToTextLoader
+from langchain_openvino_asr import OpenVINOSpeechToTextLoader
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 
 from langchain_core.runnables import RunnablePassthrough

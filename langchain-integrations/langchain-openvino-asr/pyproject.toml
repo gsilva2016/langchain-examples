@@ -22,7 +22,7 @@ disallow_untyped_defs = "True"
 python = ">=3.9,<4.0"
 langchain-core = "^0.3.15"
 optimum = {version = "1.23.3", extras = ["nncf", "openvino"]}
-langchain-huggingface = "^0.1.2"
+langchain-huggingface = "0.1.2"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T201"]

@@ -53,14 +53,8 @@ fi
 
 echo "Installing qna"
 # Default Python to Ubuntu 22.04.5
-conda create -n langchain_qna_env python=3.10.12 -y # for a specific version
+conda create -n langchain_qna_env python=3.11.11 -y # for a specific version
 conda activate langchain_qna_env
 echo 'y' | conda install pip
 
-pip install wheel setuptools langchain-openai langchain_community ipython "outetts==0.2.3" pyaudio unstructured faiss-cpu pdfminer.six openai
-
-pip install --upgrade-strategy eager "optimum[openvino,nncf]" langchain-huggingface torchaudio
-
-git clone https://github.com/gsilva2016/langchain.git
-pushd langchain; git checkout openvino_tts_tool; popd
-pip install -e langchain/libs/community
+pip install -r requirements.txt
