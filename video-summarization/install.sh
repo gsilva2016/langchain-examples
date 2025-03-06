@@ -52,9 +52,6 @@ conda activate ovlangvidsumm
 echo 'y' | conda install pip
 
 pip install -r requirements.txt
-git clone https://github.com/gsilva2016/langchain.git
-pushd langchain; git checkout openvino_tts_tool; popd
-pip install -e langchain/libs/community
 
 if [ "$1" == "--skip" ]; then
   echo "Skipping OpenVINO optimized model file creation"

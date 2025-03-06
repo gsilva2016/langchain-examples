@@ -1,3 +1,5 @@
+../langchain-integrations/langchain-videochunk
+langchain_community
 optimum-intel@git+https://github.com/huggingface/optimum-intel.git
 nncf
 openvino-genai

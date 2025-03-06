@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 from langchain.prompts import PromptTemplate
-from langchain_community.document_loaders.video import VideoChunkLoader
+from langchain_videochunk import VideoChunkLoader
 
 from ov_lvm_wrapper import OVMiniCPMV26Worker
 from merger.summary_merger import SummaryMerger
