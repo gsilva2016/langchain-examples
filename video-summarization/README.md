@@ -26,6 +26,8 @@ its setup. This section is to give the user flexibility to tweak the `optimum-cl
 
 Ensure you are inside the conda environment created for this project. 
 ```
+source activate-conda.sh
+activate_conda
 conda activate ovlangvidsumm
 optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8 # int4 also available
 ```
