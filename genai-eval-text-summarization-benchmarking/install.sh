@@ -28,7 +28,6 @@ fi
 # Create python enviornment
 conda create -n qualbench python=3.11 -y
 conda activate qualbench
-pip install rouge-score nltk bert-score
-
+pip install -r requirements.txt 
 # Done
 exit 0
