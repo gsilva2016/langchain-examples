@@ -43,15 +43,15 @@ def load_docs(embeddings, skip_docs_loading):
     if not skip_docs_loading:
         documents = []    
         for file_path in os.listdir(TARGET_FOLDER):
-            if not file_path.endswith('.html'):
+            if not file_path.endswith('.html') and not file_path.endswith('.pdf'):
                 continue
             abs_path = os.path.join(TARGET_FOLDER, file_path)
             print(f"Loading document {abs_path} embedding into vector store...", flush=True)
             documents.extend(load_single_document(abs_path))
 
-        spliter_name = "RecursiveCharacter"  # PARAM
-        chunk_size=1000  # PARAM
-        chunk_overlap=200  # PARAM
+        spliter_name = "Character" #"RecursiveCharacter"  # PARAM
+        chunk_size=1500  # PARAM
+        chunk_overlap=0  # PARAM
         text_splitter = TEXT_SPLITERS[spliter_name](chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         texts = text_splitter.split_documents(documents)
 

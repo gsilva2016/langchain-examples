@@ -95,5 +95,39 @@ def pretty_print_docs(docs):
     print(str(buff)[:500])
 
 
+def chunk_transcript_docs(docs, chunk_size = 1500):
+    new_docs = []
+    text_len_batched = 0
+    text_ts_start = None
+    text_ts_end = None
+    text_batched = ""
+    num_docs = len(docs) - 1
+
+    for i, doc in enumerate(docs):
+        text = doc.page_content
+        text_len_batched += len(text)
+        text_batched += text
+
+        if text_ts_start is None:
+            text_ts_start = doc.metadata["timestamp"]
+            
+        if (text_len_batched >= chunk_size) or (text_len_batched >0 and i == num_docs):
+            text_ts_end = doc.metadata["timestamp"]
+            new_doc = Document(
+                        page_content=text_batched.lstrip(),
+                        metadata={
+                            "start": str(eval(text_ts_start)[0]),
+                            "end": str(eval(text_ts_end)[1])
+                        })
+            new_docs.append(new_doc)
+            text_ts_start = None
+            text_ts_end = None
+            text_batched = ""
+            text_len_batched = 0
+    return new_docs
+
+def format_transcript_docs(docs):
+    return " ".join(doc.metadata['start'] + "; " + doc.metadata['end'] + "; " + doc.page_content + '\n' for doc in docs)
+
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    return " ".join(doc.page_content for doc in docs)

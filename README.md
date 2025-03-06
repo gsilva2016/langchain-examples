@@ -1,9 +1,9 @@
-# LangChain Intel AI PC Examples
+# LangChain* - Intel® GenAI Reference Samples
 
-This repository contains a set of Intel AI PC examples where each part of the workload  can be distributed across the edge, on-prem, or a CSP.
+Various Intel® hardware and LangChain based examples are provided. Different parts of the workload can be distributed across edge, on-prem, or a CSP devices/infrastructure.
 
 | Demo  | Description |
 | ------------- | ------------- |
-| hybrid_architecture_swapping | Demonstrates running LangChain based applications using hybrid architectures. Demo-1 can be run on an Intel AI PC and distribute pieces of the pipeline across on-prem edge servers and/or CSP managed AI services. Demo-1 (run-demo-1.sh) will perform three tests to demonstrate this with LangChain.  |
-| simple_summarization  | Demonstrate running LangChain for OpenVINO ASR and LLM summarization of the transcription |
-
+| [chapterization](chapterization) | Demonstrates an pipeline which automatically chapterizes long text/content from a provided audio context. The primary components utilize OpenVINO™ in LangChain* for audio-speech-recognition, embeddings generation, K-means clustering, and LLM chapterization.  |
+| [qna](qna)  | Demonstrates a pipeline which performs QnA using audio or text with RAG. The primary components utilize OpenVINO™ in LangChain for audio-speech-recognition, LLM text generation/response, and text-to-speech.   |
+| [video-summarization](video-summarization)  |  Summarize Videos Using OpenVINO-GenAI, Langchain, and MiniCPM-V-2_6.  |
