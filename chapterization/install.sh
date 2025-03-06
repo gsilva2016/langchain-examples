@@ -51,8 +51,4 @@ conda create -n langchain_chapterization_env python=3.10.12 -y # for a specific 
 conda activate langchain_chapterization_env
 echo 'y' | conda install pip
 
-pip install wheel setuptools langchain-openai langchain_community langchain-huggingface
-pip install --upgrade-strategy eager "optimum[openvino,nncf]==1.23.3"
-git clone https://github.com/gsilva2016/langchain.git
-pushd langchain; git checkout openvino_asr_loader; popd
-pip install -e langchain/libs/community
+pip install -r requirements.txt
