@@ -1,5 +1,3 @@
-#wheel 
-#setuptools 
 langchain-community==0.3.19
 langchain-huggingface==0.1.2
 langchain-openai==0.3.7
