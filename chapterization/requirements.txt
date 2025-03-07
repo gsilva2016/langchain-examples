@@ -1,3 +1,4 @@
+distro==1.7.0
 langchain-community==0.3.19
 ../langchain-integrations/langchain-openvino-asr
 langchain-huggingface @ git+https://github.com/langchain-ai/langchain.git@34638ccfae3960f7b94c7f1fac7ee058ad806ea1#egg=libs/partners/huggingface\&subdirectory=libs/partners/huggingface
