@@ -110,8 +110,8 @@ jobs:
          ./report.pdf
          
     - name: Dependabot Alert CSV Export
-      uses: ambilykk/dependabot-alert-export@v1.0
-      with:        
+      uses: anyroadcom/dependabot-alert-export@v1.0
+      with:
         GITHUB_TOKEN: ${{ secrets.SECURITY_TOKEN }}
         org_name: 'gsilva2016'
         repo_name: 'langchain-examples'
