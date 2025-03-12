@@ -108,3 +108,16 @@ jobs:
         name: report
         path: |
          ./report.pdf
+         
+    - name: Dependabot Alert CSV Export
+      uses: ShamKarthikS-Hexaware/dependabot-alert-export@v1.0
+      with:        
+        GITHUB_TOKEN: ${{ secrets.SECURITY_TOKEN }}
+        org_name: 'INTEL'
+        repo_name: 'langchain-samples'
+        csv_path: data/vulnerability.csv
+    - name: Upload Vulnerability report
+      uses: actions/upload-artifact@v3
+      with:
+          name: vulnerability_report
+          path: data/dependabot-vulnerability.csv
