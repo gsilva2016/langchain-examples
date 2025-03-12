@@ -117,7 +117,8 @@ jobs:
         repo_name: 'langchain-samples'
         csv_path: data/vulnerability.csv
     - name: Upload Vulnerability report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
           name: vulnerability_report
-          path: data/dependabot-vulnerability.csv
+          path: |
+           ./dependabot-vulnerability.csv
