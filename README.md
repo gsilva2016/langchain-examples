@@ -10,3 +10,5 @@ Various Intel® hardware and LangChain based examples are provided. Different pa
 | [eval-text-summarization-benchmarking](genai-eval-text-summarization-benchmarking)  |  Perform a qualitative assessment of a candidate summarization by comparing it to a reference response. Metrics calculated are BLEU, ROUGE-N, and BERTScore  |
 
 Note: Please refer to following [guide](https://www.intel.com/content/www/us/en/docs/oneapi/installation-guide-linux/2023-0/gpu-disable-hangcheck.html) for disabling GPU hangchecks.
+
+FFmpeg is an open source project licensed under LGPL and GPL. See https://www.ffmpeg.org/legal.html. You are solely responsible for determining if your use of FFmpeg requires any additional licenses. Intel is not responsible for obtaining any such licenses, nor liable for any licensing fees due, in connection with your use of FFmpeg.
