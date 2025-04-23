@@ -7,6 +7,4 @@ openvino-genai
 timm
 einops
 decord
-fastapi
-uvicorn
-requests
+../langchain-integrations/langchain-summarymerge-score
