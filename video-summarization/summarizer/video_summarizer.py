@@ -11,16 +11,17 @@ from langchain.prompts import PromptTemplate
 from langchain_videochunk import VideoChunkLoader
 
 from ov_lvm_wrapper import OVMiniCPMV26Worker
-from merger.summary_merger import SummaryMerger
+from langchain_summarymerge_score import SummaryMergeScoreTool
 
 os.environ["no_proxy"] = "localhost,127.0.0.1"
+SUMMARY_MERGER_ENDPOINT = "http://127.0.0.1:8000/merge_summaries"
 
 
 def post_request(input_data):
     formatted_req = {
         "summaries": input_data
     }
-    response = requests.post(url="http://127.0.0.1:8000/merge_summaries", json=formatted_req)
+    response = requests.post(url=SUMMARY_MERGER_ENDPOINT, json=formatted_req)
     return response.content
 
 
@@ -131,18 +132,17 @@ if __name__ == '__main__':
     overall_summ_st_time = time.time()
     # two ways to get overall_summary and anomaly score:
 
-    # 1. refer to test_api.py to use post an HTTP request to call API wrapper summary merger (uses llama3.2)
+    # 1. post an HTTP request to call API wrapper for summary merger (uses llama3.2)
     with ThreadPoolExecutor() as pool:
         future = pool.submit(post_request, chunk_summaries)
         res = ast.literal_eval(future.result().decode("utf-8"))
 
-        print(f"Overall Summary: {res['overall_summary']}")
-        print(f"Anomaly Score: {res['anomaly_score']}")
-
     # 2. pass existing minicpm based chain, this does not use the FastAPI route and calls the class functions directly
-    # summary_merger = SummaryMerger(chain=chain, device="GPU")
-    # ret = summary_merger.merge_summaries(chunk_summaries)
-    # print(ret)
+    # summary_merger = SummaryMergeScoreTool(chain=chain, device="GPU")
+    # res = summary_merger.invoke({"summaries": chunk_summaries})
+    
+    print(f"Overall Summary: {res['overall_summary']}")
+    print(f"Anomaly Score: {res['anomaly_score']}")
 
     output_handler("\nOverall-Video Summary Inference time: {} sec\n".format(time.time() - overall_summ_st_time),
                    filename=args.outfile, mode="a")

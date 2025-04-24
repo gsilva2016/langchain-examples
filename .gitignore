@@ -6,3 +6,5 @@ cache/
 dist/
 build/
 *cache*/
+video_chunks/
+MiniCPM_*/
