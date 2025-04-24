@@ -1,5 +1,7 @@
 """SummaryMergeScore tools."""
 
+import ast
+from concurrent.futures import ThreadPoolExecutor
 import math
 import os
 import re
@@ -14,6 +16,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 from langchain.prompts import PromptTemplate
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
+import requests
 
 class SummaryMergeScoreToolInput(BaseModel):
     """Input schema for SummaryMergeScore tool.
@@ -171,12 +174,33 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
 
         self.batch_size = batch_size
     
+    def post_request(self, input_data: dict):
+        formatted_req = {
+            "summaries": input_data
+        }
+        try:
+            response = requests.post(url="http://127.0.0.1:8000/merge_summaries", json=formatted_req)
+            return response.content
+        
+        except Exception as e:
+            print(f"\n\nAPI request failed with exception: {e}")
+            print("Please ensure local endpoint server is running.")
+            sys.exit(-1)
+        
     def _run(
         self, summaries: dict, run_manager: Optional[CallbackManagerForToolRun] = None
     ) -> str:
         """
         Merge summaries generated from multiple chunks of text and generate a final summary with an anomaly score
         """
+        if not self.api_base is None:
+            # send the request to the FastAPI endpoint using a ThreadPoolExecutor 
+            with ThreadPoolExecutor() as pool:
+                future = pool.submit(self.post_request, summaries)
+                future_res = future.result().decode("utf-8")
+                res = ast.literal_eval(future.result().decode("utf-8"))
+            return res
+        
         start_time = time.time()
         chunks = list(summaries.values())
 

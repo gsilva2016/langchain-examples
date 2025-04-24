@@ -10,36 +10,75 @@ pip install -U langchain-summarymerge-score
 
 And you should configure credentials by setting the following environment variables:
 
-* TODO: fill this out
+* Set HF_ACCESS_TOKEN via `export HF_ACCESS_TOKEN=<YOUR_ACCESS_TOKEN>`
 
-## Chat Models
+## Using the tool (SummaryMergeScore) via local endpoint server
+The SummaryMergeScore tool is also available via a local FastAPI server. 
 
-`ChatSummaryMergeScore` class exposes chat models from SummaryMergeScore.
+To use the tool via local FastAPI endpoints:
 
-```python
-from langchain_summarymerge_score import ChatSummaryMergeScore
+1. Run `python api/app.py` to start the FastAPI server. This starts the server at `http://localhost:800/`
 
-llm = ChatSummaryMergeScore()
-llm.invoke("Sing a ballad of LangChain.")
+2. The app currently exposes the following endpoint:
+* `POST /merge_summaries` - Merges summaries and assigns anomaly scores to the merged summary.
+
+#### Request Body
+```json
+{
+    "summaries": {
+        "chunk_0": "text1",
+        "chunk_1": "text2",
+        ...
+    }
+}
 ```
 
-## Embeddings
+#### Response Body
 
-`SummaryMergeScoreEmbeddings` class exposes embeddings from SummaryMergeScore.
-
-```python
-from langchain_summarymerge_score import SummaryMergeScoreEmbeddings
-
-embeddings = SummaryMergeScoreEmbeddings()
-embeddings.embed_query("What is the meaning of life?")
+```json
+{
+    "overall_summary": "Many strings and summaries",
+    "anomaly_score": 0.7
+}
 ```
 
-## LLMs
-`SummaryMergeScoreLLM` class exposes LLMs from SummaryMergeScore.
+To see example code of invoking the endpoint with a sample request, please see `tests/integration/test_mergescore_api.py`
+
+3. Invoke the tool via:
 
 ```python
-from langchain_summarymerge_score import SummaryMergeScoreLLM
+from langchain_summarymerge_score import SummaryMergeScoreTool
 
-llm = SummaryMergeScoreLLM()
-llm.invoke("The meaning of life is")
+summary_merger = SummaryMergeScoreTool(
+    api_base="http://localhost:8000/merge_summaries"
+)
+
+summaries = {
+            "summaries": {
+                "chunk_0": "text1",
+                "chunk_1": "text2"
+                }
+            }
+
+output = summary_merger.invoke({"summaries": summaries})
+```
+
+## Using the tool (SummaryMergeScore) via tool invokation
+
+```python
+from langchain_summarymerge_score import SummaryMergeScoreTool
+
+summary_merger = SummaryMergeScoreTool(
+    model_id="llmware/llama-3.2-3b-instruct-ov",
+    device="GPU"
+)
+
+summaries = {
+            "summaries": {
+                "chunk_0": "text1",
+                "chunk_1": "text2"
+                }
+            }
+
+output = summary_merger.invoke({"summaries": summaries})
 ```
