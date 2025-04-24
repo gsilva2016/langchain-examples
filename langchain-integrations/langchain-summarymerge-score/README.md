@@ -17,7 +17,7 @@ The SummaryMergeScore tool is also available via a local FastAPI server.
 
 To use the tool via local FastAPI endpoints:
 
-1. Run `python api/app.py` to start the FastAPI server. This starts the server at `http://localhost:800/`
+1. Run `python -m langchain_summarymerge_score.api.app` to start the FastAPI server. This starts the server at `http://localhost:8000/`
 
 2. The app currently exposes the following endpoint:
 * `POST /merge_summaries` - Merges summaries and assigns anomaly scores to the merged summary.
@@ -63,7 +63,7 @@ summaries = {
 output = summary_merger.invoke({"summaries": summaries})
 ```
 
-## Using the tool (SummaryMergeScore) via tool invokation
+## Using the tool (SummaryMergeScore) via tool invokation (without FastAPI endpoint server)
 
 ```python
 from langchain_summarymerge_score import SummaryMergeScoreTool

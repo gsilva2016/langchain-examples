@@ -28,11 +28,13 @@ Here is a detailed description of the video.
 '
 
 echo "Starting FastAPI app"
-uvicorn api.app:app &
+# start the FastAPI app in the background from the langchain_summarymerge_score package
+python -m langchain_summarymerge_score.api.app &
 APP_PID=$!
+sleep 10
 
 echo "Running Video Summarizer"
 PYTHONPATH=. python summarizer/video_summarizer.py $INPUT_FILE MiniCPM_INT8/ -d $DEVICE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
 
-# terminate fastapi app after video summarization concludes
+# terminate FastAPI app after video summarization concludes
 kill $APP_PID
