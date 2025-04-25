@@ -27,9 +27,9 @@ Here is a detailed description of the video.
 1) Here is a bullet point list of suspicious behavior (if any) to highlight.
 '
 
-echo "Starting FastAPI app"
-# start the FastAPI app in the background from the langchain_summarymerge_score package
-python -m langchain_summarymerge_score.api.app &
+echo "Summary Merger Service"
+# start the Summary Merger service in the background
+python services/langchain-merger-service/api/app.py &
 APP_PID=$!
 sleep 10
 
