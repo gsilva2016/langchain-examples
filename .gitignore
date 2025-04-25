@@ -8,3 +8,4 @@ build/
 *cache*/
 video_chunks/
 MiniCPM_*/
+volumes/

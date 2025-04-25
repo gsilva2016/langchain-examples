@@ -179,7 +179,7 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
             "summaries": input_data
         }
         try:
-            response = requests.post(url="http://127.0.0.1:8000/merge_summaries", json=formatted_req)
+            response = requests.post(url=self.api_base, json=formatted_req)
             return response.content
         
         except Exception as e:
