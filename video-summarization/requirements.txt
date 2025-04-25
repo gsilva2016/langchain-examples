@@ -8,3 +8,4 @@ timm
 einops
 decord
 ../langchain-integrations/langchain-summarymerge-score
+python-dotenv
