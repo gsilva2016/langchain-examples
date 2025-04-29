@@ -1,9 +1,12 @@
 """OpenVINOSpeechToTextLoader document loader."""
 
-from typing import Iterator
+from typing import Iterator, Optional
 
 from langchain_core.document_loaders.base import BaseLoader
 from langchain_core.documents import Document
+from concurrent.futures.thread import ThreadPoolExecutor
+import requests
+import os
 
 
 class OpenVINOSpeechToTextLoader(BaseLoader):
@@ -61,6 +64,7 @@ class OpenVINOSpeechToTextLoader(BaseLoader):
         chunk_length_s: int = 30,
         load_in_8bit: bool = False,
         batch_size: int = 1,
+        api_base: Optional[str] = os.getenv("OPENVINO_ASR_API_BASE", None)
     ) -> None:
         """
         Initializes the OpenVINOSpeechToTextLoader.
@@ -75,6 +79,20 @@ class OpenVINOSpeechToTextLoader(BaseLoader):
             batch_size: Size of the batch
         """ # noqa: E501
 
+        self.api_base = api_base
+        self.file_path = file_path
+
+        if not api_base is None:
+            return
+
+        self.device = device
+        self.model_id = model_id
+        self.return_timestamps = return_timestamps
+        self.return_language = return_language
+        self.chunk_length_s = chunk_length_s
+        self.load_in_8bit = load_in_8bit
+        self.batch_size = batch_size
+
         from pathlib import Path
 
         check_device = device.lower()
@@ -83,15 +101,6 @@ class OpenVINOSpeechToTextLoader(BaseLoader):
 
         if not Path(file_path).exists():
             raise NotImplementedError(f"{file_path} does not exist")
-
-        self.file_path = file_path
-        self.model_id = model_id
-        self.device = device
-        self.return_timestamps = return_timestamps
-        self.return_language = return_language
-        self.chunk_length_s = chunk_length_s
-        self.load_in_8bit = load_in_8bit
-        self.batch_size = batch_size
 
         try:
             from optimum.intel.openvino import OVModelForSpeechSeq2Seq
@@ -119,7 +128,23 @@ class OpenVINOSpeechToTextLoader(BaseLoader):
             feature_extractor=processor.feature_extractor,
         )
 
+    def post_request(self, input_data: str, diarize: bool):
+        request = { 'file': open(input_data, 'rb')}
+        params = { 'diarize': False }
+        #print("post_request: ", self.api_base)
+        response = requests.post(url=self.api_base, files=request, params=params)
+        return response.content
+
+
     def load(self) -> Iterator[Document]:
+        if not self.api_base is None:
+            # send the request to the FastAPI endpoint using a ThreadPoolExecutor for async processing
+            with ThreadPoolExecutor() as pool:
+                # toto: place holder for including diarize results
+                future = pool.submit(self.post_request, self.file_path, False)
+                future_res = future.result().decode("utf-8")
+            return future_res
+
         try:
             import time
 
