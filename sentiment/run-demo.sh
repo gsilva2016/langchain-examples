@@ -12,4 +12,4 @@ export TOKENIZERS_PARALLELISM=true
 SENTIMENT_MODEL="llmware/qwen2-1.5b-instruct-ov"
 
 echo "Run sentiment analysis (text)"
-python3 sentiment.py audio.mp3 --device $INF_DEVICE --sentiment_model_id $SENTIMENT_MODEL
+python3 sentiment.py $1 --device $INF_DEVICE --sentiment_model_id $SENTIMENT_MODEL
