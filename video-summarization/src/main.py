@@ -148,5 +148,7 @@ if __name__ == '__main__':
         print("Main: Starting chunk summary merger")
         # Method 1: Post an HTTP request to call API wrapper for summary merger
         merge_future = pool.submit(send_summary_request, summary_queue)
+    
+    
 
     # output_handler(output, filename=args.outfile, mode='a', verbose=False)

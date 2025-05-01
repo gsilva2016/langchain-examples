@@ -1,6 +1,7 @@
 import os
 import time
 from dotenv import load_dotenv
+from langchain_summarymerge_score import SummaryMergeScoreTool
 import numpy as np
 import requests
 
@@ -24,15 +25,19 @@ def send_summary_request(summary_q):
             }
             print(f"Summary Merger: Sending {len(chunk_summaries)} chunk summaries for merging")
             try:
-                response = requests.post(url=SUMMARY_MERGER_ENDPOINT, json=formatted_req)
+                summary_merger = SummaryMergeScoreTool(
+                    api_base=SUMMARY_MERGER_ENDPOINT,
+                )
+                merge_res = summary_merger.invoke(formatted_req)
+                '''response = summary_merger.merge_summaries(formatted_req)
                 if response.status_code != 200:
                     print(f"Summary Merger: Error: {response.status_code}, {response.content}")
                 
-                merge_res = response.json()
+                merge_res = response.json()'''
                 print(f"Overall Summary: {merge_res['overall_summary']}")
                 print(f"Anomaly Score: {merge_res['anomaly_score']}")
 
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 print(f"Summary Merger: Request failed: {e}")
             
             # return response.content
