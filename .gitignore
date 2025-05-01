@@ -9,3 +9,9 @@ build/
 video_chunks/
 MiniCPM_*/
 volumes/
+*.yaml
+*.yml
+*.xml
+*.json
+standalone_embed.sh
+sk.sh

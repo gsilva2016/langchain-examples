@@ -1,30 +1,17 @@
 import argparse
 import ast
 import os
+import queue
 import sys
 import time
 from concurrent.futures.thread import ThreadPoolExecutor
-from pathlib import Path
 
-import requests
 from langchain.prompts import PromptTemplate
 from langchain_videochunk import VideoChunkLoader
 
 from ov_lvm_wrapper import OVMiniCPMV26Worker
 from langchain_summarymerge_score import SummaryMergeScoreTool
-from dotenv import load_dotenv
-
-load_dotenv()
-NO_PROXY = os.environ.get("NO_PROXY", default="localhost")
-SUMMARY_MERGER_ENDPOINT = os.environ.get("SUMMARY_MERGER_ENDPOINT", None)
-
-def post_request(input_data):
-    formatted_req = {
-        "summaries": input_data
-    }
-    response = requests.post(url=SUMMARY_MERGER_ENDPOINT, json=formatted_req)
-    return response.content
-
+from api_requests import send_summary_request, ingest_into_milvus, generate_chunk_summaries
 
 def output_handler(text: str,
                    filename: str = '',
@@ -78,7 +65,7 @@ if __name__ == '__main__':
         exit()
 
     # Create template for inputs
-    prompt = PromptTemplate(
+    '''prompt = PromptTemplate(
         input_variables=["video", "question"],
         template="{video},{question}"
     )
@@ -125,29 +112,41 @@ if __name__ == '__main__':
         output_handler(output, filename=args.outfile, mode='a', verbose=False)
         chunk_summaries[Path(doc.metadata[
                                  'chunk_path']).stem] = f"Start time: {doc.metadata['start_time']} End time: {doc.metadata['end_time']}\n" + output
+
         output_handler("\nChunk Inference time: {} sec\n".format(time.time() - chunk_st_time), filename=args.outfile,
-                       mode='a')
+                       mode='a')'''
 
-    # Summarize the full video, using the subsections summaries from each chunk
-
-    overall_summ_st_time = time.time()
-    # Two ways to get overall_summary and anomaly score:
-
-    # 1. Post an HTTP request to call API wrapper for summary merger (uses llama3.2)
-    with ThreadPoolExecutor() as pool:
-        future = pool.submit(post_request, chunk_summaries)
-        res = ast.literal_eval(future.result().decode("utf-8"))
-
-    # 2. Pass existing minicpm based chain, this does not use the FastAPI route and calls the class functions directly
-    # summary_merger = SummaryMergeScoreTool(chain=chain, device="GPU")
-    # res = summary_merger.invoke({"summaries": chunk_summaries})
+    ingest_queue = queue.Queue()
+    summary_queue = queue.Queue()
+    frame_queue = queue.Queue()
     
-    print(f"Overall Summary: {res['overall_summary']}")
-    print(f"Anomaly Score: {res['anomaly_score']}")
+    # Summarize the full video, using the subsections summaries from each chunk
+        # Two ways to get overall_summary and anomaly score:
+        # Method 1. Post an HTTP request to call API wrapper for summary merger (shown below)
+    
+        # Method 2. Pass existing minicpm based chain, this does not use the FastAPI route and calls the class functions directly
+        # summary_merger = SummaryMergeScoreTool(chain=chain, device="GPU")
+        # res = summary_merger.invoke({"summaries": chunk_summaries})
+    
+    overall_summ_st_time = time.time()
 
-    output_handler("\nOverall-Video Summary Inference time: {} sec\n".format(time.time() - overall_summ_st_time),
-                   filename=args.outfile, mode="a")
+    with ThreadPoolExecutor() as pool:
+        print("Main: Starting RTSP camera streamer")
+        
+        print("Main: Starting chunk summary generation")
+        cs_future = pool.submit(generate_chunk_summaries, ingest_queue, summary_queue, frame_queue)
+        
+        # Creating embeddings for sampled frames, all frames will be too many/gigantic amount of data which 
+        # may not be needed for downstream tasks.
+        # Currently sampling frames are part of miniCPM decision making process, so I can start this task during miniCPM service   
+        # TODO: Create image embeddings and store in a new collection?
 
-    output_handler("\nTotal Inference time: {} sec\n".format(time.time() - tot_st_time), filename=args.outfile,
-                   mode='a')
-    output_handler(output, filename=args.outfile, mode='a', verbose=False)
+        print("Main: Starting chunk summary ingestion into Milvus")
+        # Ingest chunk summaries into the running Milvus instance
+        milvus_future = pool.submit(ingest_into_milvus, ingest_queue)
+                        
+        print("Main: Starting chunk summary merger")
+        # Method 1: Post an HTTP request to call API wrapper for summary merger
+        merge_future = pool.submit(send_summary_request, summary_queue)
+
+    # output_handler(output, filename=args.outfile, mode='a', verbose=False)
