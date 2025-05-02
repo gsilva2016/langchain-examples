@@ -10,6 +10,14 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 import docs_loader_utils as docs_loader
 import agent_builder as lanchain_agent_builder
+from pymilvus import Collection
+from pymilvus import connections
+from pymilvus.orm import utility
+from pymilvus import db, Collection
+from langchain_milvus import Milvus
+from pymilvus import Collection, connections
+from langchain_core.documents import Document
+from datetime import datetime
 
 # OVMS in LangChain Reference: https://github.com/openvinotoolkit/model_server/blob/main/demos/continuous_batching/rag/rag_demo.ipynb
 
@@ -40,7 +48,7 @@ print("embeddings_api_endpoint: ", args.embeddings_api_endpoint if not "amazon" 
 print("embeddings_model", args.embeddings_model)
 print("rag document skip loading: ", args.skip_docs_loading)
 print("rag documents download dir: ./docs")
-print("vector store: FAISS")
+#print("vector store: FAISS")
 input("Press Enter to continue...")
 # 
 
@@ -83,8 +91,61 @@ print("Embeddings result (100 chars only for brevity): ", str(embs_res)[:100])
 input("Press Enter to continue...")
 
 # RAG - load docs
-print("Utilize chosen embeddings service with a vector store and a retriever")
-db = docs_loader.load_docs(embeddings, args.skip_docs_loading)
+print("Utilize chosen local/remote embeddings service with a local/remote milvus vector store")
+# Connect to Milvus
+conn = connections.connect(host="127.0.0.1", port=19530)
+if "milvus_db" not in db.list_database():
+    db.create_database("milvus_db")
+
+db.using_database("milvus_db")
+collections = utility.list_collections()
+        
+for name in collections:
+    # Collection(name).drop()
+    print(f"Collection {name} exists.")
+
+# Create Milvus instance
+db = Milvus(
+    embedding_function=embeddings, # old method used local memory via ov_txt_embeddings. With langchain it is plugnplay with remote as well
+    collection_name="chunk_summaries",
+    connection_args={"uri": "http://127.0.0.1:19530", "db_name": "milvus_db"},
+    index_params={"index_type": "FLAT", "metric_type": "L2"},
+    consistency_level="Strong",
+    drop_old=False,
+)
+print("Connected to Milvus DB successfully.")
+documents = [
+    Document(
+        page_content="Something is occuring in this chunk",
+        metadata={
+            "camera_id": "cam1",
+            "chunk_id": 1,
+            "start_time": "0",
+            "end_time": "5",
+            "chunk_path": "/tmp/1.mp4",
+            "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+    ),
+    Document(
+        page_content="Something else is occuring in this chunk",
+        metadata={
+            "camera_id": "cam2",
+            "chunk_id": 1,
+            "start_time": "0",
+            "end_time": "5",
+            "chunk_path": "/tmp/1.mp4",
+            "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+    )
+]
+
+ids = [f"{doc.metadata['camera_id']}_{doc.metadata['chunk_id']}" for doc in documents]
+print("ids to save to db: ", ids)
+db.add_documents(documents=documents, ids=ids)
+print( "total_chunks:", len(documents))
+
+
+#db = docs_loader.load_docs(embeddings, args.skip_docs_loading)
 vector_search_top_k = 5
 # RAG - get retriever
 retriever = db.as_retriever(search_kwargs={"k": vector_search_top_k})

@@ -4,7 +4,7 @@
 python3 -m venv langchain_aicaps_demo_1_env
 source langchain_aicaps_demo_1_env/bin/activate
 python -m pip install --upgrade pip
-pip install wheel setuptools langchain-openai langchain_community langchain_aws faiss-cpu unstructured
+pip install wheel setuptools langchain-openai langchain_community langchain_aws faiss-cpu unstructured pymilvus==2.5.6 langchain_milvus transformers
 pip install --upgrade-strategy eager "optimum[openvino,nncf]" langchain-huggingface
 
 curl https://docs.openvino.ai/2024/openvino-workflow/model-server/ovms_what_is_openvino_model_server.html --create-dirs -o ./docs/ovms_what_is_openvino_model_server.html
