@@ -1,5 +1,7 @@
 import argparse
+import os
 import sys
+from dotenv import load_dotenv
 from fastapi import FastAPI
 import uvicorn
 from langchain_summarymerge_score import SummaryMergeScoreTool
@@ -73,11 +75,13 @@ if __name__ == "__main__":
 
     if not args.endpoint_uri == "" and not args.endpoint_port:
         print("FastAPI server running on default localhost:8000.")
-
+        
+    
     summary_merger = SummaryMergeScoreTool(
         model_id=args.model_id,
         device=args.device,
         batch_size=args.batch_size,
-        max_new_tokens=args.max_new_tokens)
+        max_new_tokens=args.max_new_tokens        
+    )
 
     uvicorn.run(app, host=args.endpoint_uri, port=args.endpoint_port)

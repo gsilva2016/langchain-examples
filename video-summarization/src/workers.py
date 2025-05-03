@@ -1,4 +1,5 @@
 import os
+from queue import Queue
 import time
 from dotenv import load_dotenv
 from langchain_summarymerge_score import SummaryMergeScoreTool
@@ -7,11 +8,8 @@ import requests
 
 load_dotenv()
 SUMMARY_MERGER_ENDPOINT = os.environ.get("SUMMARY_MERGER_ENDPOINT", None)
-MILVUS_INGESTION_ENDPOINT = os.environ.get("MILVUS_INGESTION_ENDPOINT", None)
-MILVUS_SIM_SEARCH_ENDPOINT = os.environ.get("MILVUS_SIM_SEARCH_ENDPOINT", None)
-MILVUS_QUERY_ENDPOINT = os.environ.get("MILVUS_QUERY_ENDPOINT", None)
 
-def send_summary_request(summary_q):
+def send_summary_request(summary_q: Queue):
     while True:
         chunk_summaries = []
         
@@ -29,80 +27,59 @@ def send_summary_request(summary_q):
                     api_base=SUMMARY_MERGER_ENDPOINT,
                 )
                 merge_res = summary_merger.invoke(formatted_req)
-                '''response = summary_merger.merge_summaries(formatted_req)
-                if response.status_code != 200:
-                    print(f"Summary Merger: Error: {response.status_code}, {response.content}")
                 
-                merge_res = response.json()'''
                 print(f"Overall Summary: {merge_res['overall_summary']}")
                 print(f"Anomaly Score: {merge_res['anomaly_score']}")
 
             except Exception as e:
                 print(f"Summary Merger: Request failed: {e}")
             
-            # return response.content
+            return merge_res
         else:
             print("Summary Merger: Waiting for chunk summaries to merge")
     
         time.sleep(30)
 
-def ingest_into_milvus(ingest_q):
+def ingest_into_milvus(ingest_q: Queue, milvus_manager: object):
     while True:
         chunk_summaries = []
         
         while not ingest_q.empty():
             chunk_summaries.append(ingest_q.get())
         
-        if chunk_summaries:
-            formatted_req = {
-                "data": chunk_summaries
-
-            }
-
-            # print(formatted_req)
             print(f"Milvus: Ingesting {len(chunk_summaries)} chunk summaries into Milvus")
             try:
-                response = requests.post(url=MILVUS_INGESTION_ENDPOINT, json=formatted_req)
-                if response.status_code != 200:
-                    print(f"Milvus: Error: {response.status_code}, {response.content}")
+                if chunk_summaries:
+                    response = milvus_manager.embed_and_store(chunk_summaries)
                 
-                milvus_res = response.json()
-                print(f"Milvus: Chunk Summaries Ingested into Milvus: {milvus_res['status']}, Total chunks: {milvus_res['total_chunks']}")
+                print(f"Milvus: Chunk Summaries Ingested into Milvus: {response['status']}, Total chunks: {response['total_chunks']}")
             
-            except requests.exceptions.RequestException as e:
-                print(f"Milvus: Request failed: {e}")
+            except Exception as e:
+                print(f"Milvus: Ingestion Request failed: {e}")
         else:
             print("Milvus: Waiting for chunk summaries to ingest")
     
         time.sleep(30)
 
-def search_in_milvus(query_text):
+def search_in_milvus(query_text: str, milvus_manager: object):
     try:
-        response = requests.get(url=MILVUS_SIM_SEARCH_ENDPOINT, params={"query": query_text})
+        
+        response = milvus_manager.search(query=query_text)
         print(response.content)
-        if response.status_code != 200:
-            print(f"Error: {response.status_code}, {response.content}")
-            return None
         
-        return response.content
+        return response
     
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"Search in Milvus: Request failed: {e}")
-        return None
 
-def query_vectors(expr):
+def query_vectors(expr: str, milvus_manager: object, collection_name: str = "chunk_summaries"):
     try:
-        response = requests.get(url=MILVUS_QUERY_ENDPOINT, params={"expr": expr})
-        # print(response.content)
-        if response.status_code != 200:
-            print(f"Error: {response.status_code}, {response.content}")
-            return None
+        response = milvus_manager.query(expr=expr, collection_name=collection_name)
         
-        return response.content
+        return response
     
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"Query Vectors: Request failed: {e}")
-        return None
     
 def generate_chunk_summaries(i_queue, s_queue, f_queue):
     # To be replaced to logic to call miniCPM service
@@ -114,7 +91,7 @@ def generate_chunk_summaries(i_queue, s_queue, f_queue):
         frame = np.random.rand(1, 3, 270, 480)
         
         random_chunk = {
-            "camera_id": chunk_id,
+            "video_id": chunk_id,
             "chunk_id": f"chunk_camera_{chunk_id}_{chunk_id}",
             "chunk_path": f"video_chunks/cam_{chunk_id}/chunk_{chunk_id}.mp4",
             "chunk_summary": f"Writing some random data here for chunk {chunk_id}.",

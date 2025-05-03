@@ -11,7 +11,8 @@ from langchain_videochunk import VideoChunkLoader
 
 from ov_lvm_wrapper import OVMiniCPMV26Worker
 from langchain_summarymerge_score import SummaryMergeScoreTool
-from api_requests import send_summary_request, ingest_into_milvus, generate_chunk_summaries
+from workers import send_summary_request, ingest_into_milvus, generate_chunk_summaries
+from common.milvus.milvus_wrapper import MilvusManager
 
 def output_handler(text: str,
                    filename: str = '',
@@ -120,6 +121,9 @@ if __name__ == '__main__':
     summary_queue = queue.Queue()
     frame_queue = queue.Queue()
     
+    # Initialize Milvus
+    milvus_manager = MilvusManager()
+    
     # Summarize the full video, using the subsections summaries from each chunk
         # Two ways to get overall_summary and anomaly score:
         # Method 1. Post an HTTP request to call API wrapper for summary merger (shown below)
@@ -143,7 +147,7 @@ if __name__ == '__main__':
 
         print("Main: Starting chunk summary ingestion into Milvus")
         # Ingest chunk summaries into the running Milvus instance
-        milvus_future = pool.submit(ingest_into_milvus, ingest_queue)
+        milvus_future = pool.submit(ingest_into_milvus, ingest_queue, milvus_manager)
                         
         print("Main: Starting chunk summary merger")
         # Method 1: Post an HTTP request to call API wrapper for summary merger

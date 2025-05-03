@@ -26,31 +26,24 @@ Here is a detailed description of the video.
 **Potential Suspicious Activity**
 1) Here is a bullet point list of suspicious behavior (if any) to highlight.
 '
+export HF_ACCESS_TOKEN=<your_huggingface_access_token>
+QUERY_TEXT="<your_query_text>"
+PROJECT_ROOT_DIR=..
 
 if [ "$1" == "--run_summarizer" ] || [ "$2" == "--run_summarizer" ]; then
     echo "Starting Merger Service"
-    python services/langchain-merger-service/api/app.py &
+    python $PROJECT_ROOT_DIR/services/langchain-merger-service/api/app.py &
     MERGER_PID=$!
     sleep 10
 
-    echo "Starting Milvus Service"
-    python services/langchain-milvus-service/api/app.py &
-    MILVUS_PID=$!
-    sleep 10
-
     echo "Running Video Summarizer"
-    PYTHONPATH=. python src/main.py $INPUT_FILE MiniCPM_INT8/ -d $DEVICE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
+    PYTHONPATH=$PROJECT_ROOT_DIR python src/main.py $INPUT_FILE MiniCPM_INT8/ -d $DEVICE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
 
     echo "Video summarization completed"    
 
-if [ "$1" == "--run_summarizer" ] || [ "$2" == "--run_summarizer" ]; then  
-    echo "Starting Milvus Service"
-    python services/langchain-milvus-service/api/app.py &
-    MILVUS_PID=$!
-    sleep 10
-
+if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then  
     echo "Running RAG"
-    PYTHONPATH=. python src/rag.py --query_text "$QUERY_TEXT"
+    PYTHONPATH=$PROJECT_ROOT_DIR python src/rag.py --query_text "$QUERY_TEXT"
     
     echo "RAG completed"
 
@@ -58,9 +51,4 @@ if [ "$1" == "--run_summarizer" ] || [ "$2" == "--run_summarizer" ]; then
 if [ -n "$MERGER_PID" ]; then
     kill $MERGER_PID
     trap "kill $MERGER_PID; exit" SIGINT SIGTERM
-fi
-
-if [ -n "$MILVUS_PID" ]; then
-    kill $MILVUS_PID
-    trap "kill $MILVUS_PID; exit" SIGINT SIGTERM
 fi
