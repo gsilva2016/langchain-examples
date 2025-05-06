@@ -31,11 +31,19 @@ embed.embed_query(input_text)
 input_texts = ["text 1...", "text 2..."]
 embed.embed_documents(input_texts)
 
-# Embed single image:
+# Embed single image (URI):
 input_image = "path/to/image.jpg"
 embed.embed_image(input_image)
 
-# Embed multiple images:
+# Embed multiple images (List of URIs):
 input_images = ["path/to/image1.jpg", "path/to/image2.jpg"]
+embed.embed_images(input_images)
+
+# Embed single image (numpy array):
+input_image = np.random.rand(1, 3, 270, 480)
+embed.embed_image(input_image)
+
+# Embed multiple images (List of URIs):
+input_images = [np.random.rand(1, 3, 270, 480), np.random.rand(1, 3, 270, 480)]
 embed.embed_images(input_images)
 ```

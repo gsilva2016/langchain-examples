@@ -11,7 +11,7 @@ from langchain_videochunk import VideoChunkLoader
 
 from ov_lvm_wrapper import OVMiniCPMV26Worker
 from langchain_summarymerge_score import SummaryMergeScoreTool
-from workers import send_summary_request, ingest_into_milvus, generate_chunk_summaries
+from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus
 from common.milvus.milvus_wrapper import MilvusManager
 
 def output_handler(text: str,
@@ -137,17 +137,21 @@ if __name__ == '__main__':
     with ThreadPoolExecutor() as pool:
         print("Main: Starting RTSP camera streamer")
         
+        print("Main: Getting sampled frames")    
+        pool.submit(get_sampled_frames, frame_queue)
+        
+        print("Main: Starting frame ingestion into Milvus")
+        frame_future = pool.submit(ingest_frames_into_milvus, frame_queue, milvus_manager)
+        
         print("Main: Starting chunk summary generation")
         cs_future = pool.submit(generate_chunk_summaries, ingest_queue, summary_queue, frame_queue)
         
-        # Creating embeddings for sampled frames, all frames will be too many/gigantic amount of data which 
-        # may not be needed for downstream tasks.
-        # Currently sampling frames are part of miniCPM decision making process, so I can start this task during miniCPM service   
-        # TODO: Create image embeddings and store in a new collection?
+        print("Main: Starting frame ingestion into Milvus")
+        pool.submit(ingest_frames_into_milvus, frame_queue, milvus_manager)
 
         print("Main: Starting chunk summary ingestion into Milvus")
         # Ingest chunk summaries into the running Milvus instance
-        milvus_future = pool.submit(ingest_into_milvus, ingest_queue, milvus_manager)
+        milvus_future = pool.submit(ingest_summaries_into_milvus, ingest_queue, milvus_manager)
                         
         print("Main: Starting chunk summary merger")
         # Method 1: Post an HTTP request to call API wrapper for summary merger

@@ -1,8 +1,10 @@
 from datetime import datetime
 from typing import List, Dict
 import uuid
+import numpy as np
 from pymilvus import Collection, connections, utility, db
 from langchain_community.embeddings.openvino import OpenVINOEmbeddings
+from langchain_openvino_clip.embeddings import OpenVINOClipEmbeddings
 from langchain_milvus import Milvus
 from langchain_core.documents import Document
 
@@ -34,6 +36,11 @@ class MilvusManager:
             model_kwargs=model_kwargs,
             encode_kwargs=encode_kwargs,
         )
+        
+        self.ov_img_embeddings = OpenVINOClipEmbeddings(
+            model_id="openai/clip-vit-base-patch32",
+            device="GPU"
+        )
 
         # Connect to Milvus
         self._connect_to_milvus()
@@ -42,6 +49,16 @@ class MilvusManager:
         self.txt_vectorstore = Milvus(
             embedding_function=self.ov_txt_embeddings,
             collection_name="chunk_summaries",
+            connection_args={"uri": f"http://{self.milvus_uri}:{self.milvus_port}", "db_name": self.milvus_dbname},
+            index_params={"index_type": "FLAT", "metric_type": "L2"},
+            consistency_level="Strong",
+            drop_old=False,
+        )
+        
+        # Create an instance of the img vectorstore
+        self.img_vectorstore = Milvus(
+            embedding_function=self.ov_img_embeddings,
+            collection_name="chunk_frames",
             connection_args={"uri": f"http://{self.milvus_uri}:{self.milvus_port}", "db_name": self.milvus_dbname},
             index_params={"index_type": "FLAT", "metric_type": "L2"},
             consistency_level="Strong",
@@ -62,7 +79,7 @@ class MilvusManager:
             # Not droppingthe collection if it exists for now
             print(f"Collection {name} exists.")
 
-    def embed_and_store(self, data: List[Dict]) -> Dict:
+    def embed_txt_and_store(self, data: List[Dict]) -> Dict:
         """
         Embed text data and store it in Milvus.
         """
@@ -89,7 +106,41 @@ class MilvusManager:
             return {"status": "success", "total_chunks": len(documents)}
 
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            print(f"Error in embedding and storing text data: {e}")
+            return {"status": "error", "message": str(e), "total_chunks": 0}
+    
+    def embed_img_and_store(self, data: List[Dict]) -> Dict:
+        """
+        Embed image data and store it in Milvus.
+        """
+        try:
+            all_sampled_images = [item["frames"] for item in data]
+            embeddings = [self.ov_img_embeddings.embed_images(images) for images in all_sampled_images]
+            embeddings = [np.mean(np.array(embedding), axis=0) for embedding in embeddings]
+            print(f"Generated {len(embeddings)} embeddings of Shape: {embeddings[0].shape}")
+            
+            # Prepare texts and metadata
+            texts = [item["chunk_path"] for item in data]
+            metadatas = [
+                {
+                    "video_id": item["video_id"],
+                    "chunk_id": item["chunk_id"],
+                    "start_time": item["start_time"],
+                    "end_time": item["end_time"],
+                    "chunk_path": item["chunk_path"],
+                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                }
+                for item in data
+            ]
+
+            ids = [f"{meta['video_id']}_{meta['chunk_id']}_{uuid.uuid4()}" for meta in metadatas]
+            self.img_vectorstore.add_embeddings(texts=texts, ids=ids, metadatas=metadatas, embeddings=embeddings)
+
+            return {"status": "success", "total_chunks": len(data)}
+
+        except Exception as e:
+            print(f"Error in embedding and storing images: {e}")
+            return {"status": "error", "message": str(e), "total_chunks": 0}
 
     def query(self, expr: str, collection_name: str = "chunk_summaries") -> Dict:
         """
@@ -142,3 +193,9 @@ class MilvusManager:
         Get the text vector store instance.
         """
         return self.txt_vectorstore
+    
+    def get_img_vectorstore(self) -> Milvus:
+        """
+        Get the text vector store instance.
+        """
+        return self.img_vectorstore

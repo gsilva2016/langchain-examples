@@ -1,3 +1,4 @@
+import numpy as np
 import requests
 import openvino as ov
 from PIL import Image
@@ -101,16 +102,31 @@ class OpenVINOClipEmbeddings(Embeddings):
                 }
             
                 self.model.config.torchscript = True
-                ov_model = ov.convert_model(self.model, inputs=input_shapes, example_input=dict(inputs))
+                ov_model = ov.convert_model(self.model, input=input_shapes, example_input=dict(inputs))
 
                 correct_names = ["input_ids", "pixel_values", "attention_mask"]
                 for i, ov_input in enumerate(ov_model.inputs):
                     ov_input.set_names({correct_names[i]})
             
             else:
+                input_shapes = {
+                    "input_ids": (-1, -1),
+                    "pixel_values": (1, 3, 224, 224),
+                    "attention_mask": (-1, -1)
+                }
+            
                 self.model.config.torchscript = True
-                ov_model = ov.convert_model(self.model, example_input=dict(inputs))
+                ov_model = ov.convert_model(self.model, input=input_shapes, example_input=dict(inputs))
 
+                correct_input_names = ["input_ids", "pixel_values", "attention_mask"]
+
+                for i, ov_input in enumerate(ov_model.inputs):
+                    ov_input.set_names({correct_input_names[i]})
+                    
+                for i, ov_output in enumerate(ov_model.outputs):
+                    if i == 2:
+                        ov_output.set_names({"text_embeds"})
+                        
             ov.save_model(ov_model, ov_model_path)
         
         core = ov.Core()
@@ -144,26 +160,26 @@ class OpenVINOClipEmbeddings(Embeddings):
     def embed_images(self, image_uris: List[str]) -> List[List[float]]:
         """Embed images."""
         image_embeddings = []
-        for image_uri in image_uris:
-            image_embedding = self.embed_image(image_uri)
+        for image in image_uris:
+            image_embedding = self.embed_image(image)
             image_embeddings.append(image_embedding)
         
         return image_embeddings
         
-    def embed_image(self, image_uri: str) -> List[float]:
+    def embed_image(self, image: str | np.ndarray) -> List[float]:
         """Embed image."""
-        image_uri = Path(image_uri)
-        if not image_uri.exists():
-            raise ValueError(f"Image file {image_uri} does not exist.")
+        if isinstance(image, str):
+            image = Path(image)
+            if not image.exists():
+                raise ValueError(f"Image file {image} does not exist.")
+            image = Image.open(image)
+        elif isinstance(image, np.ndarray):
+            image = Image.fromarray(image)
+        else:
+            raise ValueError("Image must be a file path or a numpy array.")
         
-        image = Image.open(image_uri)
         inputs = self.processor(images=image, return_tensors="pt", padding=True)
         inputs = dict(inputs)
-        
         image_embedding = self.ov_clip_model(inputs)["image_embeds"][0]
         
         return image_embedding
-    
-
-    
-

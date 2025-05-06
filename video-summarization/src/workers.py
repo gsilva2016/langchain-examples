@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from langchain_summarymerge_score import SummaryMergeScoreTool
 import numpy as np
 import requests
+from PIL import Image
 
 load_dotenv()
 SUMMARY_MERGER_ENDPOINT = os.environ.get("SUMMARY_MERGER_ENDPOINT", None)
@@ -39,8 +40,29 @@ def send_summary_request(summary_q: Queue):
             print("Summary Merger: Waiting for chunk summaries to merge")
     
         time.sleep(30)
+    
+def ingest_frames_into_milvus(frame_q: Queue, milvus_manager: object):
+    while True:
+        frames = []
+        
+        while not frame_q.empty():
+            frames.append(frame_q.get())
+        
+            print(f"Milvus: Ingesting {len(frames)} frames into Milvus")
+            try:
+                if frames:
+                    response = milvus_manager.embed_img_and_store(frames)
+                
+                print(f"Milvus: Chunk Frames Ingested into Milvus: {response['status']}, Total chunks: {response['total_chunks']}")
+            
+            except Exception as e:
+                print(f"Milvus: Frame Ingestion Request failed: {e}")
+        else:
+            print("Milvus: Waiting for chunk frames to ingest")
+    
+        time.sleep(10)
 
-def ingest_into_milvus(ingest_q: Queue, milvus_manager: object):
+def ingest_summaries_into_milvus(ingest_q: Queue, milvus_manager: object):
     while True:
         chunk_summaries = []
         
@@ -50,12 +72,12 @@ def ingest_into_milvus(ingest_q: Queue, milvus_manager: object):
             print(f"Milvus: Ingesting {len(chunk_summaries)} chunk summaries into Milvus")
             try:
                 if chunk_summaries:
-                    response = milvus_manager.embed_and_store(chunk_summaries)
+                    response = milvus_manager.embed_txt_and_store(chunk_summaries)
                 
                 print(f"Milvus: Chunk Summaries Ingested into Milvus: {response['status']}, Total chunks: {response['total_chunks']}")
             
             except Exception as e:
-                print(f"Milvus: Ingestion Request failed: {e}")
+                print(f"Milvus: Chunk Summaries Ingestion Request failed: {e}")
         else:
             print("Milvus: Waiting for chunk summaries to ingest")
     
@@ -80,15 +102,40 @@ def query_vectors(expr: str, milvus_manager: object, collection_name: str = "chu
     
     except Exception as e:
         print(f"Query Vectors: Request failed: {e}")
+        
+
+def get_sampled_frames(frame_q: Queue):        
+    chunk_id = 1
+    while True:
+        frame = Image.open("/home/sanjana/expts/git/vdb/fork/test/cats.jpg")
+        # frame = np.random.randint(0, 256, size=(480, 270, 3), dtype=np.uint8)
+        frame = np.array(frame)
+    
+        sampled = []
+        for i in range(0, 30):
+            sampled.append(frame)
+
+        random_chunk = {
+            "video_id": chunk_id,
+            "chunk_id": f"chunk_camera_{chunk_id}_{chunk_id}",
+            "chunk_path": f"video_chunks/cam_{chunk_id}/chunk_{chunk_id}.mp4",
+            "frames": sampled,
+            "start_time": f"random time",
+            "end_time": f"random time"
+        }
+        
+        print(f"Generating chunk for chunk {chunk_id}")
+        
+        frame_q.put(random_chunk)
+        
+        chunk_id += 1
+        time.sleep(10)
     
 def generate_chunk_summaries(i_queue, s_queue, f_queue):
     # To be replaced to logic to call miniCPM service
     chunk_id = 1
     while True:
         time.sleep(15)
-        
-        # Create some random frame data
-        frame = np.random.rand(1, 3, 270, 480)
         
         random_chunk = {
             "video_id": chunk_id,
@@ -98,9 +145,9 @@ def generate_chunk_summaries(i_queue, s_queue, f_queue):
             "start_time": f"random time",
             "end_time": f"random time"
         }
+        
         print(f"Generating chunk summary for chunk {chunk_id}")
         
-        f_queue.put(frame)
         i_queue.put(random_chunk)
         s_queue.put(random_chunk)
         

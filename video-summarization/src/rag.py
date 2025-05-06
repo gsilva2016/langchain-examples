@@ -1,6 +1,18 @@
 import argparse
+from time import sleep
+
+from langchain_openvino_clip.embeddings import OpenVINOClipEmbeddings
 from common.milvus.milvus_wrapper import MilvusManager
 
+def pretty_print_docs(docs):
+    print(
+        f"\n{'-' * 100}\n".join(
+            [
+                f"Document {i+1}:\n\n{d.page_content}\nMetadata: {d.metadata}"
+                for i, d in enumerate(docs)
+            ]
+        )
+    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()    
@@ -11,15 +23,19 @@ if __name__ == "__main__":
     parser.add_argument("--collection_name", type=str, default="chunk_summaries")
     parser.add_argument("--retrive_top_k", type=int, default=1)
     args = parser.parse_args()
+
     
     milvus_manager = MilvusManager()
-    vectorstore = milvus_manager.get_txt_vectorstore()
+    txt_vectorstore = milvus_manager.get_txt_vectorstore()
+    img_vectorstore = milvus_manager.get_img_vectorstore()
+    
     if args.query_text:
         print(f"Search Query: {args.query_text}")
-        docs = vectorstore.as_retriever(search_kwargs={"k": args.retrive_top_k}).invoke(args.query_text)
+        docs = img_vectorstore.as_retriever(search_kwargs={"k": args.retrive_top_k}).invoke(args.query_text)
         
         if docs:
-            print(f"Search Results: {docs}")
+            print(f"Search Results")
+            pretty_print_docs(docs)
         else:
             print("No results found for the query.")
     
