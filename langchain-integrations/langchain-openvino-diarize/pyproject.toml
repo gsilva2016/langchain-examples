@@ -32,7 +32,7 @@ uvicorn = "^0.34.0"
 requests = "^2.32.3"
 pyannote-audio = "3.1"
 lightning-fabric = "^2.5.1"
-torch = "<=2.6.0"
+torch = "<=2.7.0"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T201"]
