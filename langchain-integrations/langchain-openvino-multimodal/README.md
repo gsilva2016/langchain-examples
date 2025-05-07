@@ -5,15 +5,21 @@ This package contains the LangChain integration with OpenVINOClip
 ## Installation
 
 ```bash
-pip install -U langchain-openvino-clip
+pip install -U langchain-openvino-multimodal
 ```
 
 ## Embeddings
 
-`OpenVINOClipEmbeddings` class exposes embeddings from OpenVINOClip.
+This class includes the two OpenVINO classes from `langchain_community.embeddings.openvino`. These classes were inlcuded for a unified class to create all types of OpenVINO embeddings from a single langchain package. 
+
+For sample usage, Please see - [Usage](https://python.langchain.com/docs/integrations/text_embedding/openvino/)
+1. `OpenVINOEmbeddings`
+2. `OpenVINOBgeEmbeddings`
+
+This package includes a new class for OpenVINO CLIP embeddings (images and text) called `OpenVINOClipEmbeddings` class.
 
 ```python
-from langchain_openvino_clip import OpenVINOClipEmbeddings
+from langchain_openvino_multimodal import OpenVINOClipEmbeddings
 
 # Default model is: "openai/clip-vit-base-patch32" and Default device is GPU.
 # Possible device values for Image embeddings are "CPU, GPU, NPU".
@@ -31,19 +37,11 @@ embed.embed_query(input_text)
 input_texts = ["text 1...", "text 2..."]
 embed.embed_documents(input_texts)
 
-# Embed single image (URI):
+# Embed single image:
 input_image = "path/to/image.jpg"
 embed.embed_image(input_image)
 
-# Embed multiple images (List of URIs):
+# Embed multiple images:
 input_images = ["path/to/image1.jpg", "path/to/image2.jpg"]
-embed.embed_images(input_images)
-
-# Embed single image (numpy array):
-input_image = np.random.rand(1, 3, 270, 480)
-embed.embed_image(input_image)
-
-# Embed multiple images (List of URIs):
-input_images = [np.random.rand(1, 3, 270, 480), np.random.rand(1, 3, 270, 480)]
 embed.embed_images(input_images)
 ```

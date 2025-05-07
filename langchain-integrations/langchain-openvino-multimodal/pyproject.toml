@@ -3,9 +3,9 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "langchain-openvino-clip"
+name = "langchain-openvino-multimodal"
 version = "0.1.0"
-description = "An integration package connecting OpenvinoClip and LangChain"
+description = "An integration package connecting OpenVINOMultimodal and LangChain"
 authors = []
 readme = "README.md"
 repository = "https://github.com/langchain-ai/langchain"
@@ -15,8 +15,8 @@ license = "MIT"
 disallow_untyped_defs = "True"
 
 [tool.poetry.urls]
-"Source Code" = "https://github.com/langchain-ai/langchain/tree/master/libs/partners/openvino-clip"
-"Release Notes" = "https://github.com/langchain-ai/langchain/releases?q=tag%3A%22openvino-clip%3D%3D0%22&expanded=true"
+"Source Code" = "https://github.com/langchain-ai/langchain/tree/master/libs/partners/openvino-multimodal"
+"Release Notes" = "https://github.com/langchain-ai/langchain/releases?q=tag%3A%22openvino-multimodal%3D%3D0%22&expanded=true"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0"

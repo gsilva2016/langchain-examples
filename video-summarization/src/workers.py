@@ -106,10 +106,11 @@ def query_vectors(expr: str, milvus_manager: object, collection_name: str = "chu
 
 def get_sampled_frames(frame_q: Queue):        
     chunk_id = 1
+    
+    # change below to rotate between two images
     while True:
-        frame = Image.open("/home/sanjana/expts/git/vdb/fork/test/cats.jpg")
-        # frame = np.random.randint(0, 256, size=(480, 270, 3), dtype=np.uint8)
-        frame = np.array(frame)
+        # generate random array
+        frame = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
     
         sampled = []
         for i in range(0, 30):
@@ -117,8 +118,8 @@ def get_sampled_frames(frame_q: Queue):
 
         random_chunk = {
             "video_id": chunk_id,
-            "chunk_id": f"chunk_camera_{chunk_id}_{chunk_id}",
-            "chunk_path": f"video_chunks/cam_{chunk_id}/chunk_{chunk_id}.mp4",
+            "chunk_id": f"chunk_{chunk_id}_{chunk_id}",
+            "chunk_path": f"video_chunk_path",
             "frames": sampled,
             "start_time": f"random time",
             "end_time": f"random time"
@@ -130,6 +131,7 @@ def get_sampled_frames(frame_q: Queue):
         
         chunk_id += 1
         time.sleep(10)
+
     
 def generate_chunk_summaries(i_queue, s_queue, f_queue):
     # To be replaced to logic to call miniCPM service

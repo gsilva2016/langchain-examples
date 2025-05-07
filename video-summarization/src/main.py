@@ -145,9 +145,6 @@ if __name__ == '__main__':
         
         print("Main: Starting chunk summary generation")
         cs_future = pool.submit(generate_chunk_summaries, ingest_queue, summary_queue, frame_queue)
-        
-        print("Main: Starting frame ingestion into Milvus")
-        pool.submit(ingest_frames_into_milvus, frame_queue, milvus_manager)
 
         print("Main: Starting chunk summary ingestion into Milvus")
         # Ingest chunk summaries into the running Milvus instance

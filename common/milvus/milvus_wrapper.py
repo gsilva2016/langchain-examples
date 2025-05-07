@@ -3,8 +3,7 @@ from typing import List, Dict
 import uuid
 import numpy as np
 from pymilvus import Collection, connections, utility, db
-from langchain_community.embeddings.openvino import OpenVINOEmbeddings
-from langchain_openvino_clip.embeddings import OpenVINOClipEmbeddings
+from langchain_openvino_multimodal.embeddings import OpenVINOClipEmbeddings, OpenVINOEmbeddings
 from langchain_milvus import Milvus
 from langchain_core.documents import Document
 

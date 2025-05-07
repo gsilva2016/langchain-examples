@@ -8,6 +8,7 @@ timm
 einops
 decord
 ../langchain-integrations/langchain-summarymerge-score
+../langchain-integrations/langchain-openvino-multimodal
 pymilvus==2.5.6
 langchain_milvus
 python-dotenv
