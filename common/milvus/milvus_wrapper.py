@@ -87,7 +87,7 @@ class MilvusManager:
                 Document(
                     page_content=item["chunk_summary"],
                     metadata={
-                        "video_id": item["video_id"],
+                        "video_path": item["video_path"],
                         "chunk_id": item["chunk_id"],
                         "start_time": item["start_time"],
                         "end_time": item["end_time"],
@@ -98,7 +98,7 @@ class MilvusManager:
                 for item in data
             ]
 
-            ids = [f"{doc.metadata['video_id']}_{doc.metadata['chunk_id']}_{uuid.uuid4()}" for doc in documents]
+            ids = [f"{doc.metadata['chunk_id']}_{uuid.uuid4()}" for doc in documents]
 
             self.txt_vectorstore.add_documents(documents=documents, ids=ids)
 
@@ -108,34 +108,34 @@ class MilvusManager:
             print(f"Error in embedding and storing text data: {e}")
             return {"status": "error", "message": str(e), "total_chunks": 0}
     
-    def embed_img_and_store(self, data: List[Dict]) -> Dict:
+    def embed_img_and_store(self, chunk: Dict) -> Dict:
         """
         Embed image data and store it in Milvus.
         """
         try:
-            all_sampled_images = [item["frames"] for item in data]
-            embeddings = [self.ov_img_embeddings.embed_images(images) for images in all_sampled_images]
-            embeddings = [np.mean(np.array(embedding), axis=0) for embedding in embeddings]
+            all_sampled_images = chunk["frames"]
+            embeddings = self.ov_img_embeddings.embed_images(all_sampled_images)
             print(f"Generated {len(embeddings)} embeddings of Shape: {embeddings[0].shape}")
             
             # Prepare texts and metadata
-            texts = [item["chunk_path"] for item in data]
+            texts = [chunk["chunk_path"] for emb in embeddings]
             metadatas = [
                 {
-                    "video_id": item["video_id"],
-                    "chunk_id": item["chunk_id"],
-                    "start_time": item["start_time"],
-                    "end_time": item["end_time"],
-                    "chunk_path": item["chunk_path"],
+                    "video_path": chunk["video_path"],
+                    "chunk_id": chunk["chunk_id"],
+                    "frame_id": idx,
+                    "start_time": chunk["start_time"],
+                    "end_time": chunk["end_time"],
+                    "chunk_path": chunk["chunk_path"],
                     "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 }
-                for item in data
+                for idx in chunk["frame_ids"]
             ]
 
-            ids = [f"{meta['video_id']}_{meta['chunk_id']}_{uuid.uuid4()}" for meta in metadatas]
+            ids = [f"{meta['chunk_id']}_{uuid.uuid4()}" for meta in metadatas]
             self.img_vectorstore.add_embeddings(texts=texts, ids=ids, metadatas=metadatas, embeddings=embeddings)
 
-            return {"status": "success", "total_chunks": len(data)}
+            return {"status": "success", "total_frames_in_chunk": len(all_sampled_images)}
 
         except Exception as e:
             print(f"Error in embedding and storing images: {e}")
@@ -173,7 +173,7 @@ class MilvusManager:
                 "status": "success",
                 "results": [
                     {
-                        "video_id": doc.metadata["video_id"],
+                        "video_path": doc.metadata["video_path"],
                         "chunk_id": doc.metadata["chunk_id"],
                         "start_time": doc.metadata["start_time"],
                         "end_time": doc.metadata["end_time"],

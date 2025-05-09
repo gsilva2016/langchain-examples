@@ -1,31 +1,13 @@
 import argparse
-import ast
 import os
 import queue
-import sys
-import time
 from concurrent.futures.thread import ThreadPoolExecutor
-
-from langchain.prompts import PromptTemplate
-from langchain_videochunk import VideoChunkLoader
+import time
 
 from ov_lvm_wrapper import OVMiniCPMV26Worker
 from langchain_summarymerge_score import SummaryMergeScoreTool
-from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus
+from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus, generate_chunks
 from common.milvus.milvus_wrapper import MilvusManager
-
-def output_handler(text: str,
-                   filename: str = '',
-                   mode: str = 'w',
-                   verbose: bool = True):
-    # Print to terminal
-    if verbose:
-        print(text)
-
-    # Write to file, if requested
-    if filename != '':
-        with open(filename, mode) as FH:
-            print(text, file=FH)
 
 
 if __name__ == '__main__':
@@ -59,101 +41,62 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--outfile", type=str,
                         help="File to write generated text.", default='')
 
-    tot_st_time = time.time()
     args = parser.parse_args()
     if not os.path.exists(args.video_file):
         print(f"{args.video_file} does not exist.")
         exit()
 
-    # Create template for inputs
-    '''prompt = PromptTemplate(
-        input_variables=["video", "question"],
-        template="{video},{question}"
-    )
-
-    # Wrap OpenVINO-GenAI optimized model in custom langchain wrapper
-    resolution = [] if not args.resolution else args.resolution
-    ov_minicpm = OVMiniCPMV26Worker(model_dir=args.model_dir,
-                                    device=args.device,
-                                    max_new_tokens=args.max_new_tokens,
-                                    max_num_frames=args.max_num_frames,
-                                    resolution=resolution)
-
-    # Create pipeline and invoke
-    chain = prompt | ov_minicpm
-
-    # Initialize video chunk loader
-    loader = VideoChunkLoader(
-        video_path=args.video_file,
-        chunking_mechanism="sliding_window",
-        chunk_duration=args.chunk_duration,
-        chunk_overlap=args.chunk_overlap)
-
-    # Start log
-    output_handler("python " + " ".join(sys.argv),
-                   filename=args.outfile, mode='w',
-                   verbose=False)
-
-    # Loop through docs and generate chunk summaries    
-    chunk_summaries = {}
-    for doc in loader.lazy_load():
-        # Log metadata
-        output_handler(str(f"Chunk Metadata: {doc.metadata}"),
-                       filename=args.outfile, mode='a')
-        output_handler(str(f"Chunk Content: {doc.page_content}"),
-                       filename=args.outfile, mode='a')
-
-        # Generate summaries
-        chunk_st_time = time.time()
-        video_name = Path(doc.metadata['chunk_path'])
-        inputs = {"video": video_name, "question": args.prompt}
-        output = chain.invoke(inputs)
-
-        # Log output
-        output_handler(output, filename=args.outfile, mode='a', verbose=False)
-        chunk_summaries[Path(doc.metadata[
-                                 'chunk_path']).stem] = f"Start time: {doc.metadata['start_time']} End time: {doc.metadata['end_time']}\n" + output
-
-        output_handler("\nChunk Inference time: {} sec\n".format(time.time() - chunk_st_time), filename=args.outfile,
-                       mode='a')'''
-
-    ingest_queue = queue.Queue()
-    summary_queue = queue.Queue()
-    frame_queue = queue.Queue()
+    chunk_queue = queue.Queue()
+    milvus_frames_queue = queue.Queue()
+    milvus_summaries_queue = queue.Queue()
+    vlm_queue = queue.Queue()
+    merger_queue = queue.Queue()
     
     # Initialize Milvus
     milvus_manager = MilvusManager()
     
-    # Summarize the full video, using the subsections summaries from each chunk
+    # Video files or RTSP streams
+    videos = {
+        "video_1": args.video_file, 
+        # "video_2": second file
+    }
+    
+    futures = []
+    # TODO: Clean exit of threads
+    
+    with ThreadPoolExecutor() as pool:
+        print("Main: Starting RTSP camera streamer")
+        for video in videos.values():
+            futures.append(pool.submit(generate_chunks, video, args.chunk_duration, args.chunk_overlap, 
+                        chunk_queue, chunking_mechanism="sliding_window"))
+        
+        print("Main: Getting sampled frames")    
+        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames)
+        # futures.append(sample_future)
+        
+        print("Main: Starting frame ingestion into Milvus")
+        milvus_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
+        # futures.append(milvus_future)
+        
+        print("Main: Starting chunk summary generation")
+        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue)
+
+        print("Main: Starting chunk summary ingestion into Milvus")
+        # Ingest chunk summaries into the running Milvus instance
+        milvus_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
+        
+        # Summarize the full video, using the subsections summaries from each chunk
         # Two ways to get overall_summary and anomaly score:
         # Method 1. Post an HTTP request to call API wrapper for summary merger (shown below)
     
         # Method 2. Pass existing minicpm based chain, this does not use the FastAPI route and calls the class functions directly
         # summary_merger = SummaryMergeScoreTool(chain=chain, device="GPU")
         # res = summary_merger.invoke({"summaries": chunk_summaries})
-    
-    overall_summ_st_time = time.time()
-
-    with ThreadPoolExecutor() as pool:
-        print("Main: Starting RTSP camera streamer")
-        
-        print("Main: Getting sampled frames")    
-        pool.submit(get_sampled_frames, frame_queue)
-        
-        print("Main: Starting frame ingestion into Milvus")
-        frame_future = pool.submit(ingest_frames_into_milvus, frame_queue, milvus_manager)
-        
-        print("Main: Starting chunk summary generation")
-        cs_future = pool.submit(generate_chunk_summaries, ingest_queue, summary_queue, frame_queue)
-
-        print("Main: Starting chunk summary ingestion into Milvus")
-        # Ingest chunk summaries into the running Milvus instance
-        milvus_future = pool.submit(ingest_summaries_into_milvus, ingest_queue, milvus_manager)
-                        
         print("Main: Starting chunk summary merger")
-        # Method 1: Post an HTTP request to call API wrapper for summary merger
-        merge_future = pool.submit(send_summary_request, summary_queue)
+        merge_future = pool.submit(send_summary_request, merger_queue)
     
-    
-
-    # output_handler(output, filename=args.outfile, mode='a', verbose=False)
+        while not all([future.done() for future in futures]):
+            time.sleep(0.1)
+        
+        chunk_queue.put(None)
+        # frames_queue.put(None)

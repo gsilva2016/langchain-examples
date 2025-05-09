@@ -32,8 +32,8 @@ if __name__ == "__main__":
     if args.query_text:
         print(f"Search Query: {args.query_text}")
         docs = img_vectorstore.as_retriever(
-            search_type="similarity_score_threshold",
-            search_kwargs={'score_threshold': 0.5, "k": args.retrive_top_k}
+            search_type="similarity",
+            search_kwargs={"k": args.retrive_top_k}
             ).invoke(args.query_text)
                     
         if docs:

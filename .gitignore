@@ -16,3 +16,5 @@ volumes/
 standalone_embed.sh
 sk.sh
 *.bin
+*.mp4
+*.avi
