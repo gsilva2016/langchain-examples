@@ -61,9 +61,7 @@ if __name__ == '__main__':
         # "video_2": second file
     }
     
-    futures = []
-    # TODO: Clean exit of threads
-    
+    futures = []    
     with ThreadPoolExecutor() as pool:
         print("Main: Starting RTSP camera streamer")
         for video in videos.values():
@@ -71,7 +69,7 @@ if __name__ == '__main__':
                         chunk_queue, chunking_mechanism="sliding_window"))
         
         print("Main: Getting sampled frames")    
-        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames)
+        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=True)
         # futures.append(sample_future)
         
         print("Main: Starting frame ingestion into Milvus")
@@ -80,10 +78,12 @@ if __name__ == '__main__':
         
         print("Main: Starting chunk summary generation")
         cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue)
+        # futures.append(cs_future)
 
         print("Main: Starting chunk summary ingestion into Milvus")
         # Ingest chunk summaries into the running Milvus instance
         milvus_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
+        # futures.append(milvus_future)
         
         # Summarize the full video, using the subsections summaries from each chunk
         # Two ways to get overall_summary and anomaly score:
@@ -94,9 +94,9 @@ if __name__ == '__main__':
         # res = summary_merger.invoke({"summaries": chunk_summaries})
         print("Main: Starting chunk summary merger")
         merge_future = pool.submit(send_summary_request, merger_queue)
+        # futures.append(merge_future)
     
         while not all([future.done() for future in futures]):
             time.sleep(0.1)
         
         chunk_queue.put(None)
-        # frames_queue.put(None)

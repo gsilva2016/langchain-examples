@@ -14,7 +14,7 @@ volumes/
 *.xml
 *.json
 standalone_embed.sh
-sk.sh
+sk*
 *.bin
 *.mp4
 *.avi

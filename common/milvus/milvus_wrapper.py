@@ -49,7 +49,7 @@ class MilvusManager:
             embedding_function=self.ov_txt_embeddings,
             collection_name="chunk_summaries",
             connection_args={"uri": f"http://{self.milvus_uri}:{self.milvus_port}", "db_name": self.milvus_dbname},
-            index_params={"index_type": "FLAT", "metric_type": "L2"},
+            index_params={"index_type": "FLAT", "metric_type": "COSINE"},
             consistency_level="Strong",
             drop_old=False,
         )
@@ -59,7 +59,7 @@ class MilvusManager:
             embedding_function=self.ov_img_embeddings,
             collection_name="chunk_frames",
             connection_args={"uri": f"http://{self.milvus_uri}:{self.milvus_port}", "db_name": self.milvus_dbname},
-            index_params={"index_type": "FLAT", "metric_type": "L2"},
+            index_params={"index_type": "FLAT", "metric_type": "COSINE"},
             consistency_level="Strong",
             drop_old=False,
         )
@@ -76,6 +76,7 @@ class MilvusManager:
         collections = utility.list_collections()
         for name in collections:
             # Not droppingthe collection if it exists for now
+            utility.drop_collection(name)
             print(f"Collection {name} exists.")
 
     def embed_txt_and_store(self, data: List[Dict]) -> Dict:
@@ -89,8 +90,8 @@ class MilvusManager:
                     metadata={
                         "video_path": item["video_path"],
                         "chunk_id": item["chunk_id"],
-                        "start_time": item["start_time"],
-                        "end_time": item["end_time"],
+                        "start_time": float(item["start_time"]),
+                        "end_time": float(item["end_time"]),
                         "chunk_path": item["chunk_path"],
                         "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                     },
@@ -124,8 +125,8 @@ class MilvusManager:
                     "video_path": chunk["video_path"],
                     "chunk_id": chunk["chunk_id"],
                     "frame_id": idx,
-                    "start_time": chunk["start_time"],
-                    "end_time": chunk["end_time"],
+                    "start_time": float(chunk["start_time"]),
+                    "end_time": float(chunk["start_time"]),
                     "chunk_path": chunk["chunk_path"],
                     "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 }

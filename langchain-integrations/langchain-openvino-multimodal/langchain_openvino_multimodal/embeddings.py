@@ -500,6 +500,7 @@ class OpenVINOClipEmbeddings(Embeddings):
             inputs = self.processor(text=[text], return_tensors="pt", padding=True)
             inputs = dict(inputs)
             text_embedding = self.ov_clip_model(inputs)["text_embeds"][0]
+            text_embedding = text_embedding / np.linalg.norm(text_embedding)
             return text_embedding
         else:
             print("Text is empty.")
@@ -510,6 +511,7 @@ class OpenVINOClipEmbeddings(Embeddings):
         image_embeddings = []
         for image in image_uris:
             image_embedding = self.embed_image(image)
+            image_embedding = image_embedding / np.linalg.norm(image_embedding)
             image_embeddings.append(image_embedding)
         
         return image_embeddings
