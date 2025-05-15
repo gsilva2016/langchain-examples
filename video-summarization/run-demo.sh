@@ -39,13 +39,15 @@ if [ "$1" == "--run_summarizer" ] || [ "$2" == "--run_summarizer" ]; then
     echo "Running Video Summarizer"
     PYTHONPATH=$PROJECT_ROOT_DIR python src/main.py $INPUT_FILE MiniCPM_INT8/ -d $DEVICE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
 
-    echo "Video summarization completed"    
+    echo "Video summarization completed"
+fi 
 
 if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then  
     echo "Running RAG"
     PYTHONPATH=$PROJECT_ROOT_DIR python src/rag.py --query_text "$QUERY_TEXT"
     
     echo "RAG completed"
+fi 
 
 # terminate FastAPI apps
 if [ -n "$MERGER_PID" ]; then

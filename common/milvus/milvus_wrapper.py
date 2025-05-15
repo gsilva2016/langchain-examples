@@ -76,7 +76,7 @@ class MilvusManager:
         collections = utility.list_collections()
         for name in collections:
             # Not droppingthe collection if it exists for now
-            utility.drop_collection(name)
+            # utility.drop_collection(name)
             print(f"Collection {name} exists.")
 
     def embed_txt_and_store(self, data: List[Dict]) -> Dict:
