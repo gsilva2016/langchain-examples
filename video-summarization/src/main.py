@@ -4,7 +4,6 @@ import queue
 from concurrent.futures.thread import ThreadPoolExecutor
 import time
 
-from ov_lvm_wrapper import OVMiniCPMV26Worker
 from langchain_summarymerge_score import SummaryMergeScoreTool
 from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus, generate_chunks
 from common.milvus.milvus_wrapper import MilvusManager
@@ -53,7 +52,7 @@ if __name__ == '__main__':
     merger_queue = queue.Queue()
     
     # Initialize Milvus
-    milvus_manager = MilvusManager()
+    milvus_manager = MilvusManager(img_embedding_device="NPU", txt_embedding_device="NPU")
     
     # Video files or RTSP streams
     videos = {
