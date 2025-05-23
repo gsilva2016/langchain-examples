@@ -17,6 +17,7 @@ from common.milvus.milvus_wrapper import MilvusManager
 load_dotenv()
 SUMMARY_MERGER_ENDPOINT = os.environ.get("SUMMARY_MERGER_ENDPOINT", None)
 
+# This will be removed. This is a dummy placeholder to simulate chunk summaries.
 ACTIVITIES = [
 '''    **Overall Summary**
 The video captures a sequence of moments inside a retail store, focusing on the checkout area and the surrounding aisles. The timestamp indicates the footage was taken on Tuesday, May 21, 2024, at 06:42:52.

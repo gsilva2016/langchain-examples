@@ -401,10 +401,14 @@ class OpenVINOBlipEmbeddings(Embeddings):
     Key init args — completion params:
         model: str
             Name of OpenVINO BLIP model to use. Currently supports "Salesforce/blip-itm-base-coco".
-        device: str
+        ov_vision_device: str
             Device to use for inference. Options: "GPU", "CPU", "NPU".
-        ov_model_path: str
-            Path to OpenVINO model file. 
+        ov_text_device: str
+            Device to use for inference. Options: "GPU", "CPU". NPU is not supported for text embeddings.
+        ov_vision_proj_model: str
+            Path to OpenVINO vision projection model file.
+        ov_text_proj_model: str
+            Path to OpenVINO text projection model file.
 
     See full list of supported init args and their descriptions in the params section.
     NPU does not support text embeddings currently due to static shape limitation.
@@ -416,7 +420,8 @@ class OpenVINOBlipEmbeddings(Embeddings):
 
             embed = OpenvinoBlipEmbeddings(
                 model_id="Salesforce/blip-itm-base-coco",
-                device="GPU",
+                ov_vision_device="GPU",
+                ov_text_device="GPU",
             )
 
     Embed single text:
@@ -461,6 +466,8 @@ class OpenVINOBlipEmbeddings(Embeddings):
         if "blip-itm-base-coco" not in model_id:
             raise ValueError("Only BLIP ITM COCO model is currently supported.")
         
+        print("If you are using a new device for inference, please ensure old models are deleted.")
+        
         self.ov_vision_device = ov_vision_device
         self.ov_text_device = ov_text_device
         
@@ -491,7 +498,7 @@ class OpenVINOBlipEmbeddings(Embeddings):
             ov_vision_proj = ov.convert_model(vision_with_proj, input=input_shapes, example_input=inputs["pixel_values"])
             ov.save_model(ov_vision_proj, ov_vision_proj_model)
         else:
-            print(f"Vision model with projection will be loaded from {ov_vision_proj_model} on {self.ov_vision_device}")
+            print(f"Vision model with projection will be loaded from {ov_vision_proj_model} on {self.ov_vision_device} device.")
 
         text_with_proj = TextEmbeddings(self.model.text_encoder, self.model.text_proj)
         text_with_proj.eval()
@@ -506,7 +513,7 @@ class OpenVINOBlipEmbeddings(Embeddings):
             ov_text_proj = ov.convert_model(text_with_proj, example_input=example_dict)
             ov.save_model(ov_text_proj, ov_text_proj_model)
         else:
-            print(f"Text model with projection will be loaded from {ov_text_proj_model} on {self.ov_text_device}")
+            print(f"Text model with projection will be loaded from {ov_text_proj_model} on {self.ov_text_device} device.")
         
         core = ov.Core()
         self.ov_vision_proj = core.compile_model(ov_vision_proj_model, self.ov_vision_device)
@@ -581,6 +588,8 @@ class OpenVINOClipEmbeddings(Embeddings):
             Name of OpenvinoClip model to use.
         device: str
             Device to use for inference. Options: "GPU", "CPU", "NPU".
+            Image embedding is supported on all devices.
+            Text embedding is only supported on "GPU" and "CPU".
         ov_model_path: str
             Path to OpenVINO model file. 
 
@@ -635,6 +644,8 @@ class OpenVINOClipEmbeddings(Embeddings):
         
         if "clip-vit-base-patch32" not in model_id:
             raise ValueError("Only CLIP VIT-32 model is currently supported.")
+        
+        print("If you are using a new device for inference, please ensure old models are deleted.")
 
         self.device = device
         self.model = CLIPModel.from_pretrained(model_id)
@@ -645,10 +656,11 @@ class OpenVINOClipEmbeddings(Embeddings):
         url = "http://images.cocodataset.org/val2017/000000039769.jpg"
         image = Image.open(requests.get(url, stream=True).raw)
 
-        text = ["a photo of a cat"]
+        text = ["Two cats are sleeping peacefully on a couch."]
         inputs = self.processor(text=text, images=image, return_tensors="pt", padding=True)
                 
         ov_model_path = Path(ov_model_path)
+        core = ov.Core()
         if not ov_model_path.exists():
             print(f"Converting model to OpenVINO format and saving to {ov_model_path}")
             
@@ -660,12 +672,25 @@ class OpenVINOClipEmbeddings(Embeddings):
                 }
             
                 self.model.config.torchscript = True
+                ov_npu_model = ov.convert_model(self.model, input=input_shapes, example_input=dict(inputs))
+                
+                input_shapes = {
+                    "input_ids": (-1, -1),
+                    "pixel_values": (1, 3, 224, 224),
+                    "attention_mask": (-1, -1)
+                }
                 ov_model = ov.convert_model(self.model, input=input_shapes, example_input=dict(inputs))
 
                 correct_names = ["input_ids", "pixel_values", "attention_mask"]
+                for i, ov_input in enumerate(ov_npu_model.inputs):
+                    ov_input.set_names({correct_names[i]})
+                
                 for i, ov_input in enumerate(ov_model.inputs):
                     ov_input.set_names({correct_names[i]})
-            
+                    
+                ov.save_model(ov_npu_model, "npu_img_clip-vit-base-patch32-fp16.xml")
+                ov.save_model(ov_model, ov_model_path)
+
             else:
                 input_shapes = {
                     "input_ids": (-1, -1),
@@ -685,11 +710,20 @@ class OpenVINOClipEmbeddings(Embeddings):
                     if i == 2:
                         ov_output.set_names({"text_embeds"})
                         
-            ov.save_model(ov_model, ov_model_path)
+                ov.save_model(ov_model, ov_model_path)
         
-        core = ov.Core()
-        self.ov_clip_model = core.compile_model(ov_model_path, device)
-        print(f"Model {ov_model_path} loaded successfully on {device} device.")
+        if self.device == "NPU" and Path("npu_img_clip-vit-base-patch32-fp16.xml").exists():
+            self.ov_clip_model_img = core.compile_model("npu_img_clip-vit-base-patch32-fp16.xml", self.device)
+            print(f"Model npu_img_clip-vit-base-patch32-fp16.xml loaded successfully on {self.device} device.")
+            
+            # Text embedding is not supported on NPU
+            self.ov_clip_model = core.compile_model(ov_model_path, "GPU")
+            print(f"Model {ov_model_path} loaded successfully on GPU device.")
+        
+        else:
+            # All embeddings are supported on GPU and CPU
+            self.ov_clip_model = core.compile_model(ov_model_path, device)
+            print(f"Model {ov_model_path} loaded successfully on {device} device.")
         
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
@@ -702,13 +736,13 @@ class OpenVINOClipEmbeddings(Embeddings):
         return text_embeddings
 
     def embed_query(self, text: str) -> List[float]:
-        """Embed text."""
-        if self.device == "NPU":
-            raise ValueError("NPU device is not supported for text embedding.")
-        
+        """Embed text."""        
         if text:
             inputs = self.processor(text=[text], return_tensors="pt", padding=True)
             inputs = dict(inputs)
+            if self.device == "NPU":
+                print("NPU device is not supported for text embedding, using GPU for text embedding.")
+            
             text_embedding = self.ov_clip_model(inputs)["text_embeds"][0]
             text_embedding = text_embedding / np.linalg.norm(text_embedding)
             return text_embedding
@@ -740,6 +774,10 @@ class OpenVINOClipEmbeddings(Embeddings):
         
         inputs = self.processor(images=image, return_tensors="pt", padding=True)
         inputs = dict(inputs)
-        image_embedding = self.ov_clip_model(inputs)["image_embeds"][0]
+        
+        if self.device == "NPU":
+            image_embedding = self.ov_clip_model_img(inputs)["image_embeds"][0]
+        else:
+            image_embedding = self.ov_clip_model(inputs)["image_embeds"][0]
         
         return image_embedding

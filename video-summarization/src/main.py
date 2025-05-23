@@ -52,7 +52,8 @@ if __name__ == '__main__':
     merger_queue = queue.Queue()
     
     # Initialize Milvus
-    milvus_manager = MilvusManager(img_embedding_device="NPU", txt_embedding_device="NPU")
+    
+    milvus_manager = MilvusManager()
     
     # Video files or RTSP streams
     videos = {

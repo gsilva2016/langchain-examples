@@ -26,11 +26,39 @@ Here is a detailed description of the video.
 **Potential Suspicious Activity**
 1) Here is a bullet point list of suspicious behavior (if any) to highlight.
 '
-export HF_ACCESS_TOKEN=<your_huggingface_access_token>
-QUERY_TEXT="<your_query_text>"
+export HF_ACCESS_TOKEN=
+QUERY_TEXT=
 PROJECT_ROOT_DIR=..
 
-if [ "$1" == "--run_summarizer" ] || [ "$2" == "--run_summarizer" ]; then
+# check if Milvus is running
+if ! docker ps | grep -q "milvus"; then
+    echo "Milvus is not running. Starting Milvus..."
+    # check if Milvus script exists
+    if [ ! -f "standalone_embed.sh" ]; then
+        echo "Milvus start script not found. Please run install.sh first to install Milvus." 
+        exit 1
+    else
+        bash standalone_embed.sh start
+    fi
+fi
+
+if [ -z "$HF_ACCESS_TOKEN" ]; then
+    echo "Please set the HF_ACCESS_TOKEN environment variable in run_demo.sh"
+    exit 1
+fi
+
+if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then  
+    echo "Running RAG"
+    
+    if [ -z "$QUERY_TEXT" ]; then
+    echo "Please set the QUERY_TEXT if you are running --run_rag."
+    exit 1
+    fi
+    PYTHONPATH=$PROJECT_ROOT_DIR python src/rag.py --query_text "$QUERY_TEXT"
+    
+    echo "RAG completed"
+
+else
     echo "Starting Merger Service"
     python $PROJECT_ROOT_DIR/services/langchain-merger-service/api/app.py &
     MERGER_PID=$!
@@ -40,14 +68,7 @@ if [ "$1" == "--run_summarizer" ] || [ "$2" == "--run_summarizer" ]; then
     PYTHONPATH=$PROJECT_ROOT_DIR python src/main.py $INPUT_FILE MiniCPM_INT8/ -d $DEVICE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
 
     echo "Video summarization completed"
-fi 
-
-if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then  
-    echo "Running RAG"
-    PYTHONPATH=$PROJECT_ROOT_DIR python src/rag.py --query_text "$QUERY_TEXT"
-    
-    echo "RAG completed"
-fi 
+fi
 
 # terminate FastAPI apps
 if [ -n "$MERGER_PID" ]; then

@@ -1,6 +1,6 @@
 # langchain-openvino-multimodal
 
-This package contains the LangChain integration with OpenVINOClip, and OpenVINOBgeEmbeddings
+This package contains the LangChain integration with OpenVINOBlip, OpenVINOClip, and OpenVINOBgeEmbeddings
 
 ## Installation
 

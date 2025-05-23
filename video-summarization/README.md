@@ -33,6 +33,10 @@ huggingface-cli login --token $HUGGINGFACE_TOKEN
 optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8 # int4 also available
 ```
 
+## Set HUGGINGFACE_TOKEN
+
+Open `run_demo.sh` and set `export HF_ACCESS_TOKEN=` variable. Then follow one of the 2 sections below.
+
 ## Run Video Summarization
 
 Summarize [this sample video](https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4)
@@ -47,3 +51,26 @@ Note: if the demo has already been run, you can use the following command to ski
 ```
 ./run-demo.sh --skip
 ```
+
+## Run sample RAG application
+
+Run RAG on the images and summaries you have ingested in the vector DB.
+
+Open `run_demo.sh` and enter the QUERY_TEXT in `QUERY_TEXT=` variable. Then run the script.
+```
+./run_demo.sh --run_rag
+```
+
+## Milvus Setup
+
+Milvus DB gets installed and setup when you run `install.sh`. 
+
+To stop, start or delete the DB:
+
+1. You can check the status of Milvus using the following command: `docker ps | grep milvus`
+
+2. You can stop Milvus using the following command: `bash standalone_embed.sh start`
+ 
+3. You can stop Milvus using the following command: `bash standalone_embed.sh stop`
+ 
+4. You can delete Milvus data using the following command: `bash standalone_embed.sh delete`
