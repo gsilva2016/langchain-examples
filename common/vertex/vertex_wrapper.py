@@ -1,0 +1,1 @@
+# Vertex Wrapper - LangChain has a built-in wrapper for Vertex AI models

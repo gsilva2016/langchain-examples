@@ -5,6 +5,7 @@ from decord import VideoReader, cpu
 from langchain.llms.base import LLM
 from openvino import Tensor
 
+# TODO: This will be moved out to the services directory during the miniCPM integration
 
 def encode_video(video_path: str,
                  max_num_frames: int = 64,

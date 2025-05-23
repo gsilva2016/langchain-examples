@@ -1,20 +1,117 @@
+"""SummaryMergeScore tools."""
+
+import ast
+from concurrent.futures import ThreadPoolExecutor
 import math
+import os
 import re
+import sys
 import time
+from typing import Optional, Type
 
+from langchain_core.callbacks import (
+    CallbackManagerForToolRun,
+)
+from langchain_core.tools import BaseTool
+from pydantic import BaseModel, Field
+from langchain.prompts import PromptTemplate
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
-from langchain_core.prompts import PromptTemplate
+import requests
 
+class SummaryMergeScoreToolInput(BaseModel):
+    """Input schema for SummaryMergeScore tool.
 
-class SummaryMerger:
+    This docstring is **not** part of what is sent to the model when performing tool
+    calling. The Field default values and descriptions **are** part of what is sent to
+    the model when performing tool calling.
     """
-    Merge summaries generated from multiple chunks of text and generate a final summary with an anomaly score
-    """
+    summaries: dict = Field(..., description="Dictionary of summaries to merge")
 
-    def __init__(self, model_id="llmware/llama-3.2-3b-instruct-ov", device="CPU", max_new_tokens=512, batch_size=5,
-                 chain=None):
-        self.ov_llm = None
 
+class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
+    """SummaryMergeScore tool.
+
+    Setup:
+        # TODO: Replace with relevant packages, env vars.
+        Install ``langchain-summarymerge-score`` and set environment variable ``SUMMARYMERGESCORE_API_KEY``.
+
+        .. code-block:: bash
+
+            pip install -U langchain-summarymerge-score
+            export SUMMARYMERGESCORE_API_KEY="your-api-key"
+
+    Instantiation:
+        .. code-block:: python
+
+            tool = SummaryMergeScoreTool(
+                # TODO: init params
+            )
+
+    Invocation with args:
+        .. code-block:: python
+
+            # TODO: invoke args
+            tool.invoke({...})
+
+        .. code-block:: python
+
+            # TODO: output of invocation
+
+    Invocation with ToolCall:
+
+        .. code-block:: python
+
+            # TODO: invoke args
+            tool.invoke({"args": {...}, "id": "1", "name": tool.name, "type": "tool_call"})
+
+        .. code-block:: python
+
+            # TODO: output of invocation
+    """  # noqa: E501
+
+    name: str = "Summary Merge Score Tool"
+    """The name that is passed to the model when performing tool calling."""
+    description: str = "This tool merges summaries using a specified model and device."
+    """The description that is passed to the model when performing tool calling."""
+    args_schema: Type[BaseModel] = SummaryMergeScoreToolInput
+    """The schema that is passed to the model when performing tool calling."""
+    
+    api_base: str = None
+    model_id: str = "llmware/llama-3.2-3b-instruct-ov"
+    device: str = "GPU"
+    max_new_tokens: int = 512
+    batch_size: int = 5
+    chain: object = None
+    ov_llm: object = None
+    summary_prompt: str = None
+
+
+    def __init__(self, model_id: str = "llmware/llama-3.2-3b-instruct-ov", 
+                 device: str = "GPU", 
+                 max_new_tokens: int = 512, 
+                 batch_size: int = 5,
+                 chain : object = None, 
+                 hf_token_access_token: str = os.getenv("HF_ACCESS_TOKEN", None), 
+                 api_base: str = os.getenv("OPENVINO_MERGER_API_BASE", None)):
+        super().__init__()
+
+        self.api_base = api_base
+        self.model_id = model_id
+        self.device = device
+        self.max_new_tokens = max_new_tokens
+        self.batch_size = batch_size
+        self.chain = chain
+        
+        print(f"Running model: {model_id} on device: {device}  batch size: {batch_size} max_new_tokens: {max_new_tokens}")
+        
+        if hf_token_access_token is None:
+            print("export HF_ACCESS_TOKEN=<YOUR_ACCESS_TOKEN> is necessary to download the model from HuggingFace.")
+            print("For more information on user access tokens for access to gated models see https://huggingface.co/docs/hub/en/security-tokens")
+            sys.exit(1)
+            
+        if not self.api_base is None:
+            return
+            
         if chain is not None:
             # use miniCPM chain passed from summarizers
             print("Running summary merger with pre-built LVM chain without API wrapper\n")
@@ -36,9 +133,7 @@ class SummaryMerger:
             # apply dynamic quantization for activations
             ov_config = {"PERFORMANCE_HINT": "LATENCY",
                          "NUM_STREAMS": "1",
-                         "CACHE_DIR": "./cache/ov_llama_cache",
-                         # "KV_CACHE_PRECISION": "u8",
-                         # "DYNAMIC_QUANTIZATION_GROUP_SIZE": "32",
+                         "CACHE_DIR": "./cache/ov_llama_cache"
                          }
             # use langchain openVINO pipeline to load the model
             self.ov_llm = HuggingFacePipeline.from_model_id(
@@ -73,16 +168,39 @@ class SummaryMerger:
             ### Input: {question}
             ### Answer:"""
 
-            self.prompt = PromptTemplate.from_template(self.summary_prompt)
+            prompt = PromptTemplate.from_template(self.summary_prompt)
             # generation_config = {"skip_prompt": True, "pipeline_kwargs": {"max_new_tokens": max_new_tokens}}
-            self.chain = self.prompt | self.ov_llm
+            self.chain = prompt | self.ov_llm
 
         self.batch_size = batch_size
-
-    def merge_summaries(self, summaries):
+    
+    def post_request(self, input_data: dict):
+        formatted_req = {
+            "summaries": input_data
+        }
+        try:
+            response = requests.post(url=self.api_base, json=formatted_req)
+            return response.content
+        
+        except Exception as e:
+            print(f"\n\nAPI request failed with exception: {e}")
+            print("Please ensure local endpoint server is running.")
+            sys.exit(-1)
+        
+    def _run(
+        self, summaries: dict, run_manager: Optional[CallbackManagerForToolRun] = None
+    ) -> str:
         """
         Merge summaries generated from multiple chunks of text and generate a final summary with an anomaly score
         """
+        if not self.api_base is None:
+            # send the request to the FastAPI endpoint using a ThreadPoolExecutor 
+            with ThreadPoolExecutor() as pool:
+                future = pool.submit(self.post_request, summaries)
+                future_res = future.result().decode("utf-8")
+                res = ast.literal_eval(future.result().decode("utf-8"))
+            return res
+        
         start_time = time.time()
         chunks = list(summaries.values())
 

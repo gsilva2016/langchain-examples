@@ -18,6 +18,8 @@ def post_request(input_data):
 
 
 if __name__ == "__main__":
+    print("Please ensure the FastAPI server is running (python api/app.py) before executing this script.")
+    
     summaries = {
         "chunk_0": "Start time: 0 End time: 30\n**Overall Summary**\nThe video captures a sequence of moments inside a "
                    "retail store, focusing on the checkout area and the surrounding aisles. The timestamp indicates the "
@@ -48,8 +50,12 @@ if __name__ == "__main__":
     # send the request to the FastAPI endpoint using a ThreadPoolExecutor for async processing
     with ThreadPoolExecutor() as pool:
         print("Processing...")
-        future = pool.submit(post_request, summaries)
-        res = ast.literal_eval(future.result().decode("utf-8"))
+        try:
+            future = pool.submit(post_request, summaries)
+            res = ast.literal_eval(future.result().decode("utf-8"))
 
-        print(f"Overall Summary: {res['overall_summary']}")
-        print(f"Anomaly Score: {res['anomaly_score']}")
+            print(f"Overall Summary: {res['overall_summary']}")
+            print(f"Anomaly Score: {res['anomaly_score']}")
+        except Exception as e:
+            print("Please ensure the FastAPI server is running (python api/app.py) before executing this script.")
+            print(f"Error: {e}")

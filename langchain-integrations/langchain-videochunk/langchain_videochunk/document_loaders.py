@@ -106,6 +106,7 @@ class VideoChunkLoader(BaseLoader):
         self.specific_intervals = specific_intervals
         self.output_dir = output_dir
 
+        self.output_dir = os.path.join(self.output_dir, self.video_path.split(".")[0])
         if self.output_dir:
             # Remove the existing directory if it alreade exists
             # and create a fresh one before processing new chunks
@@ -179,10 +180,10 @@ class VideoChunkLoader(BaseLoader):
         return intervals
 
     def _save_video_chunk(
-        self, start_time: float, duration: float, chunk_id: int
+        self, start_time: float, duration: float, chunk_id: int, video_name: str
     ) -> str:
         """Save a video chunk using ffmpeg."""
-
+            
         output_path = os.path.join(self.output_dir, f"chunk_{chunk_id}.mp4")
         command = [
             "ffmpeg",
@@ -196,7 +197,8 @@ class VideoChunkLoader(BaseLoader):
             "copy",  # Copy codec for fast processing
             output_path,
         ]
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
         return output_path
 
     def lazy_load(self) -> Iterator[Document]:
@@ -213,7 +215,12 @@ class VideoChunkLoader(BaseLoader):
         ):
             start_time = interval["start"]
             duration = interval["end"] - interval["start"]
-            chunk_path = self._save_video_chunk(start_time, duration, chunk_id)
+            video_name = os.path.basename(self.video_path)
+            chunk_path = self._save_video_chunk(start_time, duration, chunk_id, video_name)
+            
+            if not os.path.exists(chunk_path):
+                raise ValueError(f"Chunk {chunk_path} was not created successfully.")
+            
             yield Document(
                 page_content=f"Video chunk from {start_time}s to {interval['end']}s",
                 metadata={

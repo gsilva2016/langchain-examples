@@ -1,0 +1,112 @@
+Metadata-Version: 2.3
+Name: langchain-summarymerge-score
+Version: 0.1.0
+Summary: An integration package connecting SummaryMergeScore and LangChain
+License: MIT
+Requires-Python: >=3.9,<4.0
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Dist: fastapi (>=0.115.12,<0.116.0)
+Requires-Dist: langchain-community (>=0.3.22,<0.4.0)
+Requires-Dist: langchain-core (>=0.3.15,<0.4.0)
+Requires-Dist: langchain-huggingface (>=0.1.2,<0.2.0)
+Requires-Dist: requests (>=2.32.3,<3.0.0)
+Requires-Dist: torch (>=2.7.0,<3.0.0)
+Requires-Dist: torchvision (>=0.22.0,<0.23.0)
+Requires-Dist: transformers (==4.48.0)
+Requires-Dist: uvicorn (>=0.34.2,<0.35.0)
+Project-URL: Repository, https://github.com/langchain-ai/langchain
+Project-URL: Release Notes, https://github.com/langchain-ai/langchain/releases?q=tag%3A%22summarymerge-score%3D%3D0%22&expanded=true
+Project-URL: Source Code, https://github.com/langchain-ai/langchain/tree/master/libs/partners/summarymerge-score
+Description-Content-Type: text/markdown
+
+# langchain-summarymerge-score
+
+This package contains the LangChain integration with SummaryMergeScore
+
+## Installation
+
+```bash
+pip install -U langchain-summarymerge-score
+```
+
+And you should configure credentials by setting the following environment variables:
+
+* Set HF_ACCESS_TOKEN via `export HF_ACCESS_TOKEN=<YOUR_ACCESS_TOKEN>`
+
+## Using the tool (SummaryMergeScore) via local endpoint server
+The SummaryMergeScore tool is also available via a local FastAPI server. 
+
+To use the tool via local FastAPI endpoints:
+
+1. Run `python -m langchain_summarymerge_score.api.app` to start the FastAPI server. This starts the server at `http://localhost:8000/`
+
+2. The app currently exposes the following endpoint:
+* `POST /merge_summaries` - Merges summaries and assigns anomaly scores to the merged summary.
+
+#### Request Body
+```json
+{
+    "summaries": {
+        "chunk_0": "text1",
+        "chunk_1": "text2",
+        ...
+    }
+}
+```
+
+#### Response Body
+
+```json
+{
+    "overall_summary": "Many strings and summaries",
+    "anomaly_score": 0.7
+}
+```
+
+To see example code of invoking the endpoint with a sample request, please see `tests/integration/test_mergescore_api.py`
+
+3. Invoke the tool via:
+
+```python
+from langchain_summarymerge_score import SummaryMergeScoreTool
+
+summary_merger = SummaryMergeScoreTool(
+    api_base="http://localhost:8000/merge_summaries"
+)
+
+summaries = {
+            "summaries": {
+                "chunk_0": "text1",
+                "chunk_1": "text2"
+                }
+            }
+
+output = summary_merger.invoke({"summaries": summaries})
+```
+
+## Using the tool (SummaryMergeScore) via tool invokation (without FastAPI endpoint server)
+
+```python
+from langchain_summarymerge_score import SummaryMergeScoreTool
+
+summary_merger = SummaryMergeScoreTool(
+    model_id="llmware/llama-3.2-3b-instruct-ov",
+    device="GPU"
+)
+
+summaries = {
+            "summaries": {
+                "chunk_0": "text1",
+                "chunk_1": "text2"
+                }
+            }
+
+output = summary_merger.invoke({"summaries": summaries})
+```
+
