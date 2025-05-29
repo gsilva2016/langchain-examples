@@ -75,9 +75,12 @@ Based on the analysis of the video, no shoplifting or suspicious activities are 
 def send_summary_request(summary_q: queue.Queue):
     while True:
         chunk_summaries = []
-        
         while not summary_q.empty():
-            chunk_summaries.append(summary_q.get())
+            chunk = summary_q.get()
+            if chunk is None:
+                # exit the thread if None is received 
+                return  
+            chunk_summaries.append(chunk)
         
         if chunk_summaries:
             print(f"Summary Merger: Received {len(chunk_summaries)} chunk summaries for merging")
@@ -99,7 +102,6 @@ def send_summary_request(summary_q: queue.Queue):
             except Exception as e:
                 print(f"Summary Merger: Request failed: {e}")
             
-            return merge_res
         else:
             print("Summary Merger: Waiting for chunk summaries to merge")
     
