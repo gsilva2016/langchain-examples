@@ -106,9 +106,12 @@ class VideoChunkLoader(BaseLoader):
         self.specific_intervals = specific_intervals
         self.output_dir = output_dir
 
-        self.output_dir = os.path.join(self.output_dir, self.video_path.split(".")[0])
+        video_name = os.path.splitext(os.path.basename(self.video_path))[0]
+        self.output_dir = os.path.join(self.output_dir, video_name)
+
+        print("Saving video chunks to:", self.output_dir)
         if self.output_dir:
-            # Remove the existing directory if it alreade exists
+            # Remove the existing directory if it already exists
             # and create a fresh one before processing new chunks
             if os.path.exists(self.output_dir):
                 shutil.rmtree(self.output_dir)
