@@ -69,7 +69,8 @@ if __name__ == '__main__':
                         chunk_queue, chunking_mechanism="sliding_window"))
         
         print("Main: Getting sampled frames")    
-        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False)
+        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=True,
+                                    resolution=args.resolution)
         # futures.append(sample_future)
         
         print("Main: Starting frame ingestion into Milvus")
@@ -77,11 +78,10 @@ if __name__ == '__main__':
         # futures.append(milvus_future)
         
         print("Main: Starting chunk summary generation")
-        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue)
+        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens)
         # futures.append(cs_future)
 
         print("Main: Starting chunk summary ingestion into Milvus")
-        # Ingest chunk summaries into the running Milvus instance
         milvus_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
         # futures.append(milvus_future)
         
