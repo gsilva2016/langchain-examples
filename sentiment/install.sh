@@ -50,16 +50,7 @@ echo "Installing sentiment analysis"
 conda create -n langchain_sentiment_analysis_env python=3.10.12 -y --force # for a specific version
 conda activate langchain_sentiment_analysis_env
 echo 'y' | conda install pip
-# need for export. current reqs.txt in ovms repo does not have all reqs needed
 pip install -r requirements.txt --resume-retries 3
-
-rm -R model_server && true
-mkdir model_server && cd model_server
-# latest 2025.1 does not have LLM support so pulling files last commit instead
-#git clone -b v2025.1 --single-branch https://github.com/openvinotoolkit/model_server.git # doesnt include quantize for LLMs
-wget https://raw.githubusercontent.com/openvinotoolkit/model_server/04e4909c11cf394e3bc41784b0e00f6506ba843b/demos/common/export_models/requirements.txt -O requirements.txt
-pip install -r requirements.txt --resume-retries 3
-cd ..
 wget https://raw.githubusercontent.com/openvinotoolkit/model_server/04e4909c11cf394e3bc41784b0e00f6506ba843b/demos/common/export_models/export_model.py -O export_model.py
 
 rm -Rf ovms && true

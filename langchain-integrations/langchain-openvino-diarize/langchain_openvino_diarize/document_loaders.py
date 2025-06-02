@@ -117,6 +117,7 @@ class OpenVINOSpeechDiarizeLoader(BaseLoader):
 
         from pathlib import Path
         pipeline = Pipeline.from_pretrained(self.model_id, use_auth_token=hf_token_access_token)
+        pipeline.segmentation.model = pipeline.segmentation.model.to('xpu')
 
         #core = ov.Core()
         #ov_speaker_segmentation_path = Path("pyannote-segmentation.xml")
@@ -210,7 +211,7 @@ class OpenVINOSpeechDiarizeLoader(BaseLoader):
         docs = []
 
         for turn, _, speaker in diarization.itertracks(yield_label=True):
-            print(f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}")
+            #print(f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}")
             doc = Document(
                     page_content=f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}",
                     metadata={
