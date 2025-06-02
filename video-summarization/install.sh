@@ -114,6 +114,20 @@ echo "You can delete Milvus data using the following command:"
 echo "bash standalone_embed.sh delete"
 echo ""
 
+# Install OpenVINO Model Server (OVMS) on baremetal
+if command -v ovms &> /dev/null; then
+    echo "OpenVINO Model Server (OVMS) is already installed."
+else
+    echo "Installing OpenVINO Model Server (OVMS) on baremetal"
+    # Download OVMS .deb package
+    wget https://github.com/openvinotoolkit/model_server/releases/download/v2025.1/ovms_ubuntu22.tar.gz
+    tar -xzvf ovms_ubuntu22.tar.gz
+    sudo apt update -y && apt install -y libxml2 curl
+    echo "export LD_LIBRARY_PATH=${PWD}/ovms/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
+    echo "export PATH=\$PATH:${PWD}/ovms/bin" >> ~/.bashrc
+    source ~/.bashrc
+fi
+    
 # Create python environment
 conda create -n ovlangvidsumm python=3.10 -y
 conda activate ovlangvidsumm
@@ -126,5 +140,8 @@ if [ "$1" == "--skip" ]; then
 else
     echo "Creating OpenVINO optimized model files for MiniCPM"
     huggingface-cli login --token $HUGGINGFACE_TOKEN
-    optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8 # int4 also available
+    # optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8 # int4 also available
+    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
+    mkdir models
+    python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device GPU --cache 2 --pipeline_type VLM
 fi

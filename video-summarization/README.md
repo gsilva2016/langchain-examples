@@ -29,8 +29,9 @@ Ensure you `export HUGGINGFACE_TOKEN=<MY_TOKEN_HERE>` before executing the below
 source activate-conda.sh
 activate_conda
 conda activate ovlangvidsumm
-huggingface-cli login --token $HUGGINGFACE_TOKEN
-optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8 # int4 also available
+curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
+mkdir models
+python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device GPU --cache 2 --pipeline_type VLM
 ```
 
 ## Set HUGGINGFACE_TOKEN

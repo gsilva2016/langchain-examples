@@ -30,6 +30,16 @@ export HF_ACCESS_TOKEN=
 QUERY_TEXT=
 PROJECT_ROOT_DIR=..
 
+# Check if ovms is running
+if lsof -i:8013 | grep -q LISTEN; then
+    echo "OVMS is already running on port 8013."
+else
+    echo "Starting OVMS on port 8013."
+    ovms --rest_port 8013 --config_path ./models/config.json &
+    OVMS_PID=$!
+    sleep 5
+fi
+
 # check if Milvus is running
 if ! docker ps | grep -q "milvus"; then
     echo "Milvus is not running. Starting Milvus..."
