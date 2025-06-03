@@ -19,7 +19,11 @@ def performASR(q: Queue, audio_ptr, model_id, asr_device, batch_size=1):
 
 #    asr_docs = loads(asr_loader.load()) if args.asr_endpoint != "" else asr_loader.load()
     start_time = time.time()
-    docs = loader(audio_ptr, batch_size=batch_size ,return_timestamps="word")
+    try:
+        docs = loader(audio_ptr, batch_size=batch_size ,return_timestamps="word")
+    except Exception as ex:
+        print("ASR processing error: ", ex)
+
     if "xpu" in str(loader.device):
         torch.xpu.synchronize()
 
@@ -34,7 +38,11 @@ def performDiarize(q: Queue, endpoint, audio_file, model_id):
         return
 
     start_time = time.time()
-    docs = loads(loader.load()) if loader.api_base != None else loader.load()
+    try:
+        docs = loads(loader.load()) if loader.api_base != None else loader.load()
+    except Exception as ex:
+        print("Diarization processing error: ", ex)
+
     print("Diarization Latency: ", time.time() - start_time, flush=True)
     q.put(docs)
 
