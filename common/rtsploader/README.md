@@ -24,7 +24,7 @@ for doc in rtsp_loader.lazy_load():
 
 results in
 ```
-{'chunk_path': 'chunk_dir/chunk_2025-06-02_18-29-00.avi, 'timestamp': 2025-06-02_18-29-00, source: 'rtsp://<user>:<pass>@<camera-ip>', 'detected_objects': []}
+Sliding Window Chunk metadata: {'chunk_path': 'chunk_dir/chunk_2025-06-02_18-29-00.avi, 'timestamp': 2025-06-02_18-29-00, source: 'rtsp://<user>:<pass>@<camera-ip>', 'detected_objects': []}
 ```
 
 
@@ -58,5 +58,5 @@ for doc in rtsp_loader.lazy_load():
 
 results in:
 ```
-{'chunk_path': 'output_dir/chunk_2025-06-02_18-29-00.avi, 'timestamp': '2025-06-02_18-29-00', 'source': 'rtsp://<user>:<pass>@<camera-ip>', 'detected_objects': [{'frame 15', objects: ['person', 'chair']}, {'frame 20', objects: ['person', 'chair', 'surfboard']}...]}
+Sliding Window Chunk metadata: {'chunk_path': 'output_dir/chunk_2025-06-02_18-29-00.avi, 'timestamp': '2025-06-02_18-29-00', 'source': 'rtsp://<user>:<pass>@<camera-ip>', 'detected_objects': [{'frame 15', objects: ['person', 'chair']}, {'frame 20', objects: ['person', 'chair', 'surfboard']}...]}
 ```
