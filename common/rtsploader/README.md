@@ -1,10 +1,10 @@
 ## RTSPChunkLoader
 `RTSPChunkLoader` class exposes a document loader for creating video chunks from RTSP streams.
-Optionally, you can enable a yolo object detection model to also record detected objects in the chunk documents.
+Optionally, you can enable a yolo object detection model to record detected objects in the frames to the chunk documents.
 
 ### Yolo disabled
 ```
-from langchain_rtspchunk import RTSPChunkLoader
+from rtsploader_wrapper import RTSPChunkLoader
 
 rtsp_loader = RTSPChunkLoader(
     rtsp_url="rtsp://<user>:<pass>@<camera-ip>",
@@ -36,7 +36,7 @@ yolo export model=yolo11n.pt # creates 'yolo11n.pt'
 ```
 
 ```
-from langchain_rtspchunk import rtsploader_wrapper
+from rtsploader_wrapper import rtsploader_wrapper
 
 rtsp_loader = RTSPChunkLoader(
     rtsp_url="rtsp://<user>:<pass>@<camera-ip>",
