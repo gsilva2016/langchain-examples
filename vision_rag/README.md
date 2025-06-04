@@ -23,19 +23,44 @@ This demo is in a Jupyter Notebook format. Please go to `vision_rag_image_search
 
 ## Installation
 
-You may choose to run the Notebook with Jupyter or Jupyter Lab. Ensure either packages are installed.
+You may choose to run the Notebook with Jupyter or Jupyter Lab. Ensure either packages are installed. We also recommend running the Notebook in a virtual environment or Conda env to ensure clean package install.
 
-1. Jupyter Lab: `pip install jupyterlab`. Once installed, launch JupyterLab with: `jupyter lab`
+1. First install Conda or Python Virtual Environment 
 
-2. Install the classic Jupyter Notebook with: `pip install notebook`.
- To run the notebook: `jupyter notebook`
+2. If using Python Virtual Environment: 
+
+    ```
+    python -m venv myenv
+    source myenv/bin/activate 
+    ```
+
+3. If using Conda:
+
+    ```
+    conda create -n myenv python=3.10
+    conda activate
+    ```
+
+4. Install either Jupyter Lab or Classic Jupyter Notebook. 
+    - Jupyter Lab: `pip install jupyterlab`. Once installed, launch JupyterLab with: `jupyter lab`
+    - Install the classic Jupyter Notebook with: `pip install notebook`. To run the notebook: `jupyter notebook`
+
+5. Add virtual environment to Jupyter kernel: `
+
+    ```
+    pip install --user ipykernel
+    python -m ipykernel install --user --name=myenv
+    ```
 
 ## Run Notebook
 
 ```
 cd vision_rag/
-jupyter lab
+jupyter lab vision_rag_image_search.ipynb
 ```
-You may begin interacting with the Notebook using the instructons provided in the Notebook.
+You may begin interacting with the Notebook using the instructons provided in the Notebook. 
+
+P.S: Ensure the kernel listed on the top right is your custom virtual environment created above (myenv for example)
+
 
 
