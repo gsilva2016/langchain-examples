@@ -30,14 +30,34 @@ export HF_ACCESS_TOKEN=
 QUERY_TEXT=
 PROJECT_ROOT_DIR=..
 
-# Check if ovms is running
+# Check if OVMS is already running
 if lsof -i:8013 | grep -q LISTEN; then
     echo "OVMS is already running on port 8013."
 else
-    echo "Starting OVMS on port 8013."
+    echo "Starting OVMS on port 8013."    
+    export LD_LIBRARY_PATH=${PWD}/ovms/lib
+    export PATH=$PATH:${PWD}/ovms/bin
+    export PYTHONPATH=${PWD}/ovms/lib/python
     ovms --rest_port 8013 --config_path ./models/config.json &
     OVMS_PID=$!
-    sleep 5
+
+    # Wait for OVMS to be ready
+    echo "Waiting for OVMS to become available..."
+    for i in {1..30}; do
+        STATUS=$(curl -s http://localhost:8013/v1/config)
+        if echo "$STATUS" | grep -q '"state": "AVAILABLE"'; then
+            echo "OVMS is ready."
+            break
+        else
+            sleep 1
+        fi
+        if [ $i -eq 30 ]; then
+            echo "OVMS did not become ready in time."
+            kill $OVMS_PID
+            exit 1
+        fi
+    done
+
 fi
 
 # check if Milvus is running
@@ -80,8 +100,12 @@ else
     echo "Video summarization completed"
 fi
 
-# terminate FastAPI apps
+# terminate services
 if [ -n "$MERGER_PID" ]; then
     kill $MERGER_PID
     trap "kill $MERGER_PID; exit" SIGINT SIGTERM
+
+    kill $OVMS_PID
+    trap "kill $OVMS_PID; exit" SIGINT SIGTERM
+
 fi

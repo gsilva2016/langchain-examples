@@ -120,12 +120,15 @@ if command -v ovms &> /dev/null; then
 else
     echo "Installing OpenVINO Model Server (OVMS) on baremetal"
     # Download OVMS .deb package
-    wget https://github.com/openvinotoolkit/model_server/releases/download/v2025.1/ovms_ubuntu22.tar.gz
-    tar -xzvf ovms_ubuntu22.tar.gz
-    sudo apt update -y && apt install -y libxml2 curl
+    wget https://github.com/openvinotoolkit/model_server/releases/download/v2025.1/ovms_ubuntu24_python_on.tar.gz
+    tar -xzvf ovms_ubuntu24_python_on.tar.gz
+    sudo apt update -y && sudo apt install -y libxml2 curl
     echo "export LD_LIBRARY_PATH=${PWD}/ovms/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
     echo "export PATH=\$PATH:${PWD}/ovms/bin" >> ~/.bashrc
+    echo "export PYTHONPATH=${PWD}/ovms/lib/python:\$PYTHONPATH" >> ~/.bashrc
     source ~/.bashrc
+    sudo apt -y install libpython3.12
+    pip3 install "Jinja2==3.1.6" "MarkupSafe==3.0.2"
 fi
     
 # Create python environment
@@ -140,7 +143,6 @@ if [ "$1" == "--skip" ]; then
 else
     echo "Creating OpenVINO optimized model files for MiniCPM"
     huggingface-cli login --token $HUGGINGFACE_TOKEN
-    # optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8 # int4 also available
     curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
     mkdir models
     python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device GPU --cache 2 --pipeline_type VLM

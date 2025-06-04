@@ -1,4 +1,4 @@
-# Summarize Videos Using OpenVINO-GenAI, Langchain, and MiniCPM-V-2_6
+# Summarize Videos Using OpenVINO Model Server, Langchain, and MiniCPM-V-2_6
 
 ## Installation
 
