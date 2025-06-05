@@ -6,6 +6,7 @@
 access to the model. For more information on user access tokens for access to gated models
 see [here](https://huggingface.co/docs/hub/en/security-tokens).
 2. Next, install Intel Client GPU, Conda, Set Up Python Environment and Create OpenVINO optimized model for MiniCPM. Ensure you `export HUGGINGFACE_TOKEN=<MY_TOKEN_HERE>` before executing the below command.
+3. (Optional) By default, MiniCPM-V-2_6 runs on GPU. To use a different device (e.g., CPU), edit `install.sh` and set `DEVICE=`.
 
 ```
 # Validated on Ubuntu 24.04 and 22.04
@@ -30,7 +31,7 @@ source activate-conda.sh
 activate_conda
 conda activate ovlangvidsumm
 curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
-mkdir models
+mkdir -p models
 python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device GPU --cache 2 --pipeline_type VLM
 ```
 

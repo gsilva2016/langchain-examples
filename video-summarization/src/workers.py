@@ -183,7 +183,6 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
 
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
                              prompt: str, max_new_tokens: int):
-    # To be replaced to logic to call miniCPM service
     
     while True:
         time.sleep(10)
@@ -236,7 +235,8 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             print("Response JSON:", response.json())
         else:
             print("Error:", response.status_code, response.text)
-
+            continue
+        
         chunk_summary = {
             "video_path": chunk["video_path"],
             "chunk_id": chunk["chunk_id"],

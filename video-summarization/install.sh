@@ -7,6 +7,9 @@ then
 	DEBIAN_FRONTEND=noninteractive apt install sudo -y
 fi
 
+# Set target device for model export
+DEVICE="GPU"
+
 # Install Conda
 source activate-conda.sh
 
@@ -144,6 +147,6 @@ else
     echo "Creating OpenVINO optimized model files for MiniCPM"
     huggingface-cli login --token $HUGGINGFACE_TOKEN
     curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
-    mkdir models
-    python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device GPU --cache 2 --pipeline_type VLM
+    mkdir -p models
+    python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM
 fi

@@ -69,7 +69,7 @@ if __name__ == '__main__':
                         chunk_queue, chunking_mechanism="sliding_window"))
         
         print("Main: Getting sampled frames")    
-        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=True,
+        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
                                     resolution=args.resolution)
         # futures.append(sample_future)
         
