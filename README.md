@@ -6,7 +6,7 @@ Various Intel® hardware and LangChain based examples are provided. Different pa
 | ------------- | ------------- |
 | [chapterization](chapterization) | Demonstrates an pipeline which automatically chapterizes long text/content from a provided audio context. The primary components utilize OpenVINO™ in LangChain* for audio-speech-recognition, embeddings generation, K-means clustering, and LLM chapterization.  |
 | [qna](qna)  | Demonstrates a pipeline which performs QnA using audio or text with RAG. The primary components utilize OpenVINO™ in LangChain for audio-speech-recognition, LLM text generation/response, and text-to-speech.   |
-| [video-summarization](video-summarization)  |  Summarize Videos Using OpenVINO-GenAI, Langchain, and MiniCPM-V-2_6.  |
+| [video-summarization](video-summarization)  |  Summarize Videos Using OpenVINO Model Server, Langchain, and MiniCPM-V-2_6.  |
 | [eval-text-summarization-benchmarking](genai-eval-text-summarization-benchmarking)  |  Perform a qualitative assessment of a candidate summarization by comparing it to a reference response. Metrics calculated are BLEU, ROUGE-N, and BERTScore  |
 
 <b>Note:</b> Please refer to following [guide](https://www.intel.com/content/www/us/en/docs/oneapi/installation-guide-linux/2023-0/gpu-disable-hangcheck.html) for disabling GPU hangchecks.
