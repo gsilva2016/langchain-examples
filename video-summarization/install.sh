@@ -118,6 +118,9 @@ echo "bash standalone_embed.sh delete"
 echo ""
 
 # Install OpenVINO Model Server (OVMS) on baremetal
+export LD_LIBRARY_PATH=${PWD}/ovms/lib:$LD_LIBRARY_PATH
+export PATH=$PATH:${PWD}/ovms/bin
+export PYTHONPATH=${PWD}/ovms/lib/python:$PYTHONPATH
 if command -v ovms &> /dev/null; then
     echo "OpenVINO Model Server (OVMS) is already installed."
 else
@@ -126,10 +129,6 @@ else
     wget https://github.com/openvinotoolkit/model_server/releases/download/v2025.1/ovms_ubuntu24_python_on.tar.gz
     tar -xzvf ovms_ubuntu24_python_on.tar.gz
     sudo apt update -y && sudo apt install -y libxml2 curl
-    echo "export LD_LIBRARY_PATH=${PWD}/ovms/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
-    echo "export PATH=\$PATH:${PWD}/ovms/bin" >> ~/.bashrc
-    echo "export PYTHONPATH=${PWD}/ovms/lib/python:\$PYTHONPATH" >> ~/.bashrc
-    source ~/.bashrc
     sudo apt -y install libpython3.12
     pip3 install "Jinja2==3.1.6" "MarkupSafe==3.0.2"
 fi
