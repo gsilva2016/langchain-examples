@@ -15,14 +15,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(parser_txt)
     parser.add_argument("video_file", type=str,
                         help='Path to video you want to summarize.')
-    parser.add_argument("model_dir", type=str,
-                        help="Path to openvino-genai optimized model")
     parser.add_argument("-p", "--prompt", type=str,
                         help="Text prompt. By default set to: `Please summarize this video.`",
                         default="Please summarize this video.")
-    parser.add_argument("-d", "--device", type=str,
-                        help="Target device for running ov MiniCPM-v-2_6",
-                        default="CPU")
     parser.add_argument("-t", "--max_new_tokens", type=int,
                         help="Maximum number of tokens to be generated.",
                         default=500)
