@@ -136,8 +136,11 @@ fi
 # Create python environment
 conda create -n ovlangvidsumm python=3.10 -y
 conda activate ovlangvidsumm
+if [ $? -ne 0 ]; then
+    echo "Conda environment activation has failed. Please check."
+    exit
+fi
 echo 'y' | conda install pip
-
 pip install -r requirements.txt
 
 if [ "$1" == "--skip" ]; then
