@@ -114,8 +114,9 @@ fi
 if [ -n "$MERGER_PID" ]; then
     kill $MERGER_PID
     trap "kill $MERGER_PID; exit" SIGINT SIGTERM
+fi
 
+if [ -n "$OVMS_PID" ]; then
     kill $OVMS_PID
     trap "kill $OVMS_PID; exit" SIGINT SIGTERM
-
 fi

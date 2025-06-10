@@ -184,20 +184,18 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
                              prompt: str, max_new_tokens: int):
     
-    while True:
-        time.sleep(10)
-        
+    while True:        
         try:
             chunk = vlm_q.get(timeout=1)
-            print(f"VLM: Received chunk {chunk['chunk_id']} for summary generation")
+
+            if chunk is None:
+                break
+
         except queue.Empty:
             print("VLM: No chunks available for summary generation")
             continue
-        
-        if chunk is None:
-            break
 
-        print(f"Generating chunk summary for chunk {chunk['chunk_id']}")
+        print(f"VLM: Generating chunk summary for chunk {chunk['chunk_id']}")
 
         content = [{"type": "text", "text": prompt}]
         for frame in chunk["frames"]:
@@ -232,7 +230,9 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                                  headers={"Content-Type": "application/json"})
 
         if response.status_code == 200:
-            print("Response JSON:", response.json())
+            output_json = response.json()
+            output_text = output_json["choices"][0]["message"]["content"]
+            print("Response JSON:", output_json)
         else:
             print("Error:", response.status_code, response.text)
             continue
@@ -243,12 +243,13 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             "chunk_path": chunk["chunk_path"],
             "start_time": chunk["start_time"],
             "end_time": chunk["end_time"],
-            "chunk_summary": response.text,
+            "chunk_summary": output_text,
         }
         
         milvus_summaries_queue.put(chunk_summary)
         merger_queue.put(chunk_summary)
-    
+
+    print("VLM: Ending service")
     milvus_summaries_queue.put(None)
     merger_queue.put(None)
         

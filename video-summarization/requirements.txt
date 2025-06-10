@@ -3,8 +3,6 @@ distro==1.7.0
 langchain_community
 optimum-intel@git+https://github.com/huggingface/optimum-intel.git
 nncf
-openvino-tokenizers[transformers]<=2025.1.0
-openvino==2025.1.0
 timm
 einops
 decord
@@ -13,3 +11,5 @@ decord
 pymilvus==2.5.6
 langchain_milvus
 python-dotenv
+openvino-tokenizers[transformers]<=2025.1.0
+openvino==2025.1.0
