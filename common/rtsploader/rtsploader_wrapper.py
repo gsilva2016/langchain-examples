@@ -38,8 +38,7 @@ class RTSPChunkLoader(BaseLoader):
             self.yolo_path = chunk_args.get("yolo_path", "yolo11n.pt") # Default to using OV yolov11n
             self.model = YOLO(self.yolo_path)
             self.yolo_queue = deque()
-            self.detection_results = {}
-            self.detection_lock = threading.Lock()
+            self.detection_queue = queue.Queue()
             self.yolo_thread = threading.Thread(target=self._yolo_sliding_window, daemon=True) # Start yolo thread for background inferencing
             self.yolo_thread.start()
         
@@ -55,7 +54,7 @@ class RTSPChunkLoader(BaseLoader):
                     
                 # Create output file
                 height, width, _ = frames[0].shape
-                fourcc = cv2.VideoWriter_fourcc(*"MP4V")
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
                 # Write all frames collected to the output file
@@ -90,25 +89,26 @@ class RTSPChunkLoader(BaseLoader):
             chunk_id = str(uuid.uuid4())
             
             formatted_time = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S')
-            chunk_filename = f"chunk_{formatted_time}.avi"
+            chunk_filename = f"chunk_{formatted_time}.mp4"
             chunk_path = os.path.join(self.output_dir, chunk_filename)
 
             frames_to_save = []
             detected_objects = []
 
             if self.yolo_enabled:
-                with self.detection_lock:
-                    for i, (fid, f) in enumerate(self.frame_buffer):
-                        frames_to_save.append(f)
-                        detection = self.detection_results.get(fid)
-                        if detection:
-                            detected_objects.append({
-                                "frame": i,
-                                "objects": detection["objects"]
+                for i, (fid, f) in enumerate(self.frame_buffer):
+                    frames_to_save.append(f)
+                    try:
+                        # Retrieve detection results from queue
+                        while not self.detection_queue.empty():
+                            detection_frame_id, objects = self.detection_queue.get_nowait()
+                            if detection_frame_id == fid:
+                                detected_objects.append({
+                                    "frame": i,
+                                    "objects": objects
                             })
-                            # Clean up memory
-                            self.detection_results.pop(fid, None)
-
+                    except queue.Empty:
+                        pass
             else:
                 for i, (fid, f) in enumerate(self.frame_buffer):
                     frames_to_save.append(f)
@@ -146,11 +146,8 @@ class RTSPChunkLoader(BaseLoader):
                         class_name = self.model.names[class_id]
                         detected_classes.append(class_name)
 
-                with self.detection_lock:
-                    self.detection_results[frame_id] = {
-                        "frame_id": frame_id,
-                        "objects": detected_classes
-                    }
+                # Enqueue detection results
+                self.detection_queue.put((frame_id, detected_classes))
 
             except Exception as e:
                 print(f"[YOLO ERROR] Inference failed: {e}")
