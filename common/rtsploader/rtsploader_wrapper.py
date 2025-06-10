@@ -10,6 +10,7 @@ import numpy as np
 from collections import deque
 import threading
 import queue
+import uuid
 
 class RTSPChunkLoader(BaseLoader):
     def __init__(self, rtsp_url: str, chunk_type: str, chunk_args: Dict, output_dir: str = "output_chunks"):
@@ -83,7 +84,12 @@ class RTSPChunkLoader(BaseLoader):
 
         # Once frame buffer reached window size, inference frames & consume buffer 
         if len(self.frame_buffer) == self.window_size:
-            formatted_time = datetime.fromtimestamp(self.buffer_start_time, timezone.utc).strftime('%Y-%m-%d_%H-%M-%S')
+            # Retain start_time, end_time and chunk_id for metadata
+            start_time = self.buffer_start_time
+            end_time = start_time + (self.window_size / self.fps)
+            chunk_id = str(uuid.uuid4())
+            
+            formatted_time = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S')
             chunk_filename = f"chunk_{formatted_time}.avi"
             chunk_path = os.path.join(self.output_dir, chunk_filename)
 
@@ -116,9 +122,9 @@ class RTSPChunkLoader(BaseLoader):
                 self.frame_buffer.popleft()
 
             self.buffer_start_time += frames_to_remove / self.fps
-            return chunk_path, formatted_time, detected_objects
+            return chunk_path, formatted_time, start_time, end_time, chunk_id, detected_objects
 
-        return None, None, []
+        return None, None, None, None, None, []
     
     def _yolo_sliding_window(self):
         while not self.stop_event.is_set():
@@ -169,14 +175,16 @@ class RTSPChunkLoader(BaseLoader):
                 current_time = time.time()
 
                 # Use sliding window for ingestion scheme
-                chunk_path, formatted_time, detections = self._sliding_window_chunk(frame, current_time)
+                chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(frame, current_time)
 
                 if chunk_path and formatted_time:
                     yield Document(
                         page_content=f"Processed RTSP chunk saved at {chunk_path}",
                         metadata={
+                            "chunk_id": chunk_id,
                             "chunk_path": chunk_path,
-                            "timestamp": formatted_time,
+                            "start_time": datetime.fromtimestamp(start_time).isoformat(),
+                            "end_time": datetime.fromtimestamp(end_time).isoformat(),
                             "source": self.rtsp_url,
                             "detected_objects": detections
                         },
