@@ -158,12 +158,15 @@ class RTSPChunkLoader(BaseLoader):
     def lazy_load(self) -> Iterator[Document]:
         """Lazily load RTSP stream chunks as LangChain Documents."""
         print(f"[INFO] Starting RTSP stream ingestion")
-        
-        self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG) # Use ffmpeg as backend for stable decoding
-        if not self.cap.isOpened():
-            print("[ERROR] Failed to open RTSP stream.")
-            return
 
+        try:
+            self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)  # Use ffmpeg as backend for stable decoding
+            if not self.cap.isOpened():
+                raise RuntimeError("Failed to open RTSP stream with FFMPEG backend.")
+        except Exception as e:
+            print("[ERROR] FFMPEG backend is not available, please ensure FFMPEG is installed and accessible.")
+            return
+        
         try:
             while True:
                 ret, frame = self.cap.read()
