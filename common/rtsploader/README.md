@@ -24,7 +24,7 @@ for doc in rtsp_loader.lazy_load():
 
 results in
 ```
-Sliding Window Chunk metadata: {'chunk_id': '5b58wefoih234h334j', 'chunk_path': 'cam_1/chunk_2025-06-02_18-29-00.avi, 'start_time': '2025-06-02T18:29:00.315088', 'end_time': '2025-06-02T18:29:05.412887', source: 'rtsp://<user>:<pass>@<camera-ip>', 'detected_objects': []}
+Sliding Window Chunk metadata: {'chunk_id': '5b58wefoih234h334j', 'chunk_path': 'cam_1/chunk_2025-06-02_18-29-00.avi', 'start_time': '2025-06-02T18:29:00.315088', 'end_time': '2025-06-02T18:29:05.412887', source: 'rtsp://<user>:<pass>@<camera-ip>', 'detected_objects': []}
 ```
 
 
@@ -58,5 +58,5 @@ for doc in rtsp_loader.lazy_load():
 
 results in:
 ```
-Sliding Window Chunk metadata: {'chunk_id': '3d3h45tfwef34fnb7ug', 'chunk_path': 'cam_1/chunk_2025-06-02_18-29-00.avi, 'start_time': '2025-06-02T18:29:00.315088', 'end_time': '2025-06-02T18:29:05.412887', 'source': 'rtsp://<user>:<pass>@<camera-ip>', 'detected_objects': [{'frame 15', objects: ['person', 'chair']}, {'frame 20', objects: ['person', 'chair', 'surfboard']}...]}
+Sliding Window Chunk metadata: {'chunk_id': '3d3h45tfwef34fnb7ug', 'chunk_path': 'cam_1/chunk_2025-06-02_18-29-00.avi', 'start_time': '2025-06-02T18:29:00.315088', 'end_time': '2025-06-02T18:29:05.412887', 'source': 'rtsp://<user>:<pass>@<camera-ip>', 'detected_objects': [{'frame 15', 'objects': ['person', 'chair']}, {'frame 20', objects: ['person', 'chair', 'surfboard']}...]}
 ```
