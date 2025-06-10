@@ -55,7 +55,7 @@ class RTSPChunkLoader(BaseLoader):
                     
                 # Create output file
                 height, width, _ = frames[0].shape
-                fourcc = cv2.VideoWriter_fourcc(*"XVID")
+                fourcc = cv2.VideoWriter_fourcc(*"MP4V")
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
                 # Write all frames collected to the output file
