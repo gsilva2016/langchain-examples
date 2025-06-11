@@ -20,6 +20,28 @@ command can be used to skip the re-install of dependencies.
 ./install.sh --skip
 ```
 
+Note: if running without --skip and the following message is produced: 
+```
+OpenVINO and OpenVINO Tokenizers versions are not binary compatible.
+OpenVINO version:            2025.1.0-18503
+OpenVINO Tokenizers version: 2025.1.0.0-523-710ddf14de8
+First 3 numbers should be the same. Update OpenVINO Tokenizers to compatible version. It is recommended to use the same day builds for pre-release version. To install both OpenVINO and OpenVINO Tokenizers release version perform:
+pip install --force-reinstall openvino openvino-tokenizers
+To update both OpenVINO and OpenVINO Tokenizers to the latest pre-release version perform:
+pip install --pre -U openvino openvino-tokenizers --extra-index-url https://storage.openvinotoolkit.org/simple/wheels/nightly
+Tokenizer won't be converted.
+```
+
+Please, run the following commands:
+```
+conda activate ovlangvidsumm
+pip install -r requirements.txt
+huggingface-cli login --token $HUGGINGFACE_TOKEN
+rm -rf models
+mkdir -p models
+python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device GPU --cache 2 --pipeline_type VLM
+```
+
 ## Convert and Save Optimized MiniCPM-V-2_6
 
 This section can be skipped if you ran `install.sh` the first time. The `install.sh` script runs this command as part of 
