@@ -1,5 +1,7 @@
 # Summarize Videos Using OpenVINO-GenAI, Langchain, and MiniCPM-V-2_6
 
+![architecture_screenshot](assests/architecture_diagram.png)
+
 ## If you would like to store chunk summaries in a vector DB for later search and retrieval, then setup Milvus DB as a standalone Docker container
 ```
 chmod +x ./milvus/setup.sh
@@ -7,7 +9,7 @@ chmod +x ./milvus/setup.sh
 ```
 Verify the service is running using `docker ps`
 
-## If you would like to inference anomolous clips to gemini cloud model, then setup gcloud instance
+## If you would like to inference anomalous clips to gemini cloud model, then setup gcloud instance
 Follow [link](https://cloud.google.com/sdk/docs/install) to create google cloud account and install gcloud.
 
 Next, login and authenticate your account
