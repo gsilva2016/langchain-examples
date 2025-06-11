@@ -67,5 +67,7 @@ Note: if the demo has already been run, you can use the following command to ski
 ```
 
 Note: If you'd like to change the video being summarized, open `summarizer/streamlit_merge.py` in the IDE of your choice and to change the video path at line 118. If you would like to change the prompt the the VLM for summarization, and/or enbaling the use of gemini for cloud inferenece, navigate to lines 206-227.
+
 Note: If you'd like to change the prompt to the merger model, open `merger/summary_merger.py` and change the prompt at line 27.
+
 Note: If you'd like to change the prompt to the cloud model open `summarizer/streamlit_summarizer.py` and change the prompt at line 266. 
