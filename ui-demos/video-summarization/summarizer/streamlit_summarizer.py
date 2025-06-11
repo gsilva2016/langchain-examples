@@ -263,8 +263,8 @@ def summarizer_main(args):
     if args.extend_to_vertex:
         print('Initializing cloud model instance...')
         cloud_model = VertexWrapper(args.cloud_model)
-        cloud_prompt = """You are an expert investigator. See attached video of a shopping aisle security camera. 
-        I want you to call out moments of identified or highly suspected shoplifting or stealing. 
+        cloud_prompt = """You are an expert investigator that analyzes video feeds. 
+        I want you to call out moments of identified or highly suspected shoplifting. 
         Look at people interacting with objects on display and taking into their possession. Please then provide a score between 0 and 1 
         to represent the amount of suspicious activity you've just analyzed. If you see no humans, then score must be 0, as there is no 
         suspicious activity possible. The score should be a float rounded to the tenth decimal.

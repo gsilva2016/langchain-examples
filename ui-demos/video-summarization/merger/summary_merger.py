@@ -11,10 +11,8 @@ class SummaryMerger:
     Merge summaries generated from multiple chunks of text and generate a final summary with an anomaly score
     """
 
-    def __init__(self, model_id="llmware/llama-3.2-3b-instruct-ov", device="CPU", max_new_tokens=512, batch_size=5,
+    def __init__(self, model_id="llmware/llama-3.2-3b-instruct-ov", device="GPU", max_new_tokens=512, batch_size=5,
                  chain=None):
-    # def __init__(self, model_id="llmware/llama-3.1-instruct-ov", device="CPU", max_new_tokens=512, batch_size=5,
-    #             chain=None):
         self.ov_llm = None
 
         if chain is not None:
