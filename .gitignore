@@ -18,4 +18,8 @@ sk*
 *.bin
 *.mp4
 *.avi
+export_model.py
+models/
+ovms/
+*.tar.gz
 yolo*

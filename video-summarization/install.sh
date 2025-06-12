@@ -7,6 +7,9 @@ then
 	DEBIAN_FRONTEND=noninteractive apt install sudo -y
 fi
 
+# Set target device for model export
+DEVICE="GPU"
+
 # Install Conda
 source activate-conda.sh
 
@@ -114,11 +117,30 @@ echo "You can delete Milvus data using the following command:"
 echo "bash standalone_embed.sh delete"
 echo ""
 
+# Install OpenVINO Model Server (OVMS) on baremetal
+export LD_LIBRARY_PATH=${PWD}/ovms/lib:$LD_LIBRARY_PATH
+export PATH=$PATH:${PWD}/ovms/bin
+export PYTHONPATH=${PWD}/ovms/lib/python:$PYTHONPATH
+if command -v ovms &> /dev/null; then
+    echo "OpenVINO Model Server (OVMS) is already installed."
+else
+    echo "Installing OpenVINO Model Server (OVMS) on baremetal"
+    # Download OVMS .deb package
+    wget https://github.com/openvinotoolkit/model_server/releases/download/v2025.1/ovms_ubuntu24_python_on.tar.gz
+    tar -xzvf ovms_ubuntu24_python_on.tar.gz
+    sudo apt update -y && sudo apt install -y libxml2 curl
+    sudo apt -y install libpython3.12
+    pip3 install "Jinja2==3.1.6" "MarkupSafe==3.0.2"
+fi
+    
 # Create python environment
 conda create -n ovlangvidsumm python=3.10 -y
 conda activate ovlangvidsumm
+if [ $? -ne 0 ]; then
+    echo "Conda environment activation has failed. Please check."
+    exit
+fi
 echo 'y' | conda install pip
-
 pip install -r requirements.txt
 
 if [ "$1" == "--skip" ]; then
@@ -126,5 +148,7 @@ if [ "$1" == "--skip" ]; then
 else
     echo "Creating OpenVINO optimized model files for MiniCPM"
     huggingface-cli login --token $HUGGINGFACE_TOKEN
-    optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8 # int4 also available
+    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
+    mkdir -p models
+    python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM
 fi

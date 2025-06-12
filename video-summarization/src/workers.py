@@ -13,64 +13,12 @@ import time
 from decord import VideoReader, cpu
 from openvino import Tensor
 from common.milvus.milvus_wrapper import MilvusManager
+import io
+import base64
 
 load_dotenv()
 SUMMARY_MERGER_ENDPOINT = os.environ.get("SUMMARY_MERGER_ENDPOINT", None)
-
-# This will be removed. This is a dummy placeholder to simulate chunk summaries.
-ACTIVITIES = [
-'''    **Overall Summary**
-The video captures a sequence of moments inside a retail store, focusing on the checkout area and the surrounding aisles. The timestamp indicates the footage was taken on Tuesday, May 21, 2024, at 06:42:52.
-
-**Activity Observed**
-1. The video shows a cashier's station with a computer monitor and a cash drawer.
-2. The aisles are stocked with various products, including snacks and beverages.
-3. There is a visible customer interaction area where a customer is seen engaging with the cashier.
-4. The floor is clean and well-maintained, with a green circular mat near the cashier's station.
-5. The store appears to be open and operational with no visible signs of disturbance or damage.
-
-**Potential Suspicious Activity**
-1. No overt signs of shoplifting or suspicious behavior are observed in the provided frames. The customer interactions seem normal, and there is no evidence of theft or tampering with merchandise.
-
-**Conclusion**
-Based on the analysis, there is no evidence of shoplifting or suspicious activity within the observed frames. The store appears to be functioning normally with no immediate concerns.''',
-
-'''
-**Overall Summary**
-The video captures a sequence of moments inside a retail store, focusing on the checkout area and the surrounding aisles. The footage is taken from a surveillance camera positioned above the store, providing a clear view of the activities below.
-
-**Activity Observed**
-1. The video shows a cashier at the checkout counter, attending to transactions.
-2. Shelves stocked with various products are visible on both sides of the aisle.
-3. The floor is clean and well-maintained, with a green circular mat near the checkout area.
-4. There are no visible customers or staff in the immediate vicinity of the checkout counter.
-5. The lighting in the store is bright, illuminating the entire area clearly.
-
-**Potential Suspicious Activity**
-1. There is no visible evidence of shoplifting or suspicious behavior in the provided frames. The cashier appears to be engaged in routine transactions, and there are no items being concealed or removed from view.
-
-**Conclusion**
-Based on the analysis, the video does not show any overt signs of shoplifting or suspicious activity. The store appears to be operating normally with standard retail operations being conducted.
-''',
-
-'''
-**Overall Summary**
-The video captures a sequence of moments inside a retail store, focusing on the checkout area and the surrounding aisles. The camera angle remains consistent throughout, providing a clear view of the store's layout and the activities within.
-
-**Activity Observed**
-1. The video shows a cashier at the checkout counter, handling transactions.
-2. Shelves stocked with various products are visible on the right side of the frame.
-3. The floor is clean and well-maintained, with a green circular mat near the checkout area.
-4. There is a visible price tag on the left side of the frame, indicating the store's pricing information.
-5. The lighting in the store is bright, illuminating the entire area clearly.
-
-**Potential Suspicious Activity**
-1. No overt signs of shoplifting or suspicious behavior are observed in the provided frames. The cashier appears to be engaged in routine transactions, and there are no individuals in the immediate vicinity of the checkout counter or the aisles that could indicate any illicit activity.
-
-**Conclusion**
-Based on the analysis of the video, no shoplifting or suspicious activities are detected within the observed frames. The environment appears orderly and the staff is performing their duties as expected.
-'''
-]
+OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 
 def send_summary_request(summary_q: queue.Queue):
     while True:
@@ -233,44 +181,75 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
     vlm_queue.put(None)
     milvus_frames_queue.put(None)
 
-def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue):
-    # To be replaced to logic to call miniCPM service
+def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
+                             prompt: str, max_new_tokens: int):
     
-    while True:
-        time.sleep(10)
-        
+    while True:        
         try:
             chunk = vlm_q.get(timeout=1)
+
+            if chunk is None:
+                break
+
         except queue.Empty:
+            print("VLM: No chunks available for summary generation")
+            continue
+
+        print(f"VLM: Generating chunk summary for chunk {chunk['chunk_id']}")
+
+        content = [{"type": "text", "text": prompt}]
+        for frame in chunk["frames"]:
+            img = Image.fromarray(frame)
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            frame_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            content.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}
+                            })
+
+        data = {
+            "model": "openbmb/MiniCPM-V-2_6",
+            "max_tokens": max_new_tokens,
+            "temperature": 0,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant. Respond in english."
+                },
+                {
+                    "role": "user",
+                    "content": content 
+                }
+            ]
+        }
+
+        response = requests.post(OVMS_ENDPOINT, 
+                                 json=data, 
+                                 headers={"Content-Type": "application/json"})
+
+        if response.status_code == 200:
+            output_json = response.json()
+            output_text = output_json["choices"][0]["message"]["content"]
+            print("Response JSON:", output_json)
+        else:
+            print("Error:", response.status_code, response.text)
             continue
         
-        if chunk is None:
-            break
+        chunk_summary = {
+            "video_path": chunk["video_path"],
+            "chunk_id": chunk["chunk_id"],
+            "chunk_path": chunk["chunk_path"],
+            "start_time": chunk["start_time"],
+            "end_time": chunk["end_time"],
+            "chunk_summary": output_text,
+        }
         
-        if "chunk_0" in chunk["chunk_path"]:
-            random_chunk = {
-                "video_path": chunk["video_path"],
-                "chunk_id": chunk["chunk_id"],
-                "chunk_path": chunk["chunk_path"],
-                "start_time": chunk["start_time"],
-                "end_time": chunk["end_time"],
-                "chunk_summary": ACTIVITIES[0],
-            }
-        else:
-            random_chunk = {
-                "video_path": chunk["video_path"],
-                "chunk_id": chunk["chunk_id"],
-                "chunk_path": chunk["chunk_path"],
-                "start_time": chunk["start_time"],
-                "end_time": chunk["end_time"],
-                "chunk_summary": ACTIVITIES[1],
-            }
-        
-        print(f"Generating chunk summary for chunk {chunk['chunk_id']}")
-        
-        milvus_summaries_queue.put(random_chunk)
-        merger_queue.put(random_chunk)
-    
+        milvus_summaries_queue.put(chunk_summary)
+        merger_queue.put(chunk_summary)
+
+    print("VLM: Ending service")
     milvus_summaries_queue.put(None)
     merger_queue.put(None)
         
