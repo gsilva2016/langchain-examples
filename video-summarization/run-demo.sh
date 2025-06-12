@@ -94,7 +94,7 @@ if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then
     echo "Please set the QUERY_TEXT if you are running --run_rag."
     exit 1
     fi
-    PYTHONPATH=$PROJECT_ROOT_DIR python src/rag.py --query_text "$QUERY_TEXT"
+    PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/rag.py --query_text "$QUERY_TEXT"
     
     echo "RAG completed"
 
@@ -102,10 +102,16 @@ else
     echo "Starting Merger Service"
     python $PROJECT_ROOT_DIR/services/langchain-merger-service/api/app.py &
     MERGER_PID=$!
-    sleep 10
+    
+    MERGER_ENDPOINT=$(echo "$SUMMARY_MERGER_ENDPOINT" | cut -d'/' -f1-3)
+    echo "Waiting for Merger Service to start..."
+    while ! curl -s "$MERGER_ENDPOINT" > /dev/null; do
+        sleep 5
+    done
+    echo "Merger Service is running at $MERGER_ENDPOINT"
 
     echo "Running Video Summarizer"
-    PYTHONPATH=$PROJECT_ROOT_DIR python src/main.py $INPUT_FILE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
+    PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/main.py $INPUT_FILE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
 
     echo "Video summarization completed"
 fi
