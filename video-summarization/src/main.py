@@ -95,3 +95,8 @@ if __name__ == '__main__':
             time.sleep(0.1)
         
         chunk_queue.put(None)
+        
+        print("Main: Waiting for merge future to complete")
+        merge_future.result()
+
+        print("Main: All tasks completed")

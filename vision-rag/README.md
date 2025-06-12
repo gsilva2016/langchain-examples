@@ -23,9 +23,9 @@ This demo is in a Jupyter Notebook format. Please go to `vision_rag_image_search
 
 ## Installation
 
-You may choose to run the Notebook with Jupyter or Jupyter Lab. Ensure either packages are installed. We also recommend running the Notebook in a virtual environment or Conda env to ensure clean package install.
+You may choose to run the Notebook with Jupyter or Jupyter Lab. We also recommend running the Notebook in a virtual environment or Conda env to ensure clean package install.
 
-1. First install Conda or Python Virtual Environment 
+1. First install [Conda](https://github.com/conda-forge/miniforge) or Python Virtual Environment
 
 2. If using Python Virtual Environment: 
 
@@ -45,7 +45,7 @@ You may choose to run the Notebook with Jupyter or Jupyter Lab. Ensure either pa
     - Jupyter Lab: `pip install jupyterlab`. Once installed, launch JupyterLab with: `jupyter lab`
     - Install the classic Jupyter Notebook with: `pip install notebook`. To run the notebook: `jupyter notebook`
 
-5. Add virtual environment to Jupyter kernel: `
+5. Add virtual environment to Jupyter kernel:
 
     ```
     pip install --user ipykernel

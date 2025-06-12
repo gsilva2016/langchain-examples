@@ -1,5 +1,12 @@
 #!/bin/bash
 
+HUGGINGFACE_TOKEN=
+
+if [ -z "$HUGGINGFACE_TOKEN" ]; then
+    echo "Please set the HUGGINGFACE_TOKEN variable"
+    exit 1
+fi
+
 dpkg -s sudo &> /dev/null
 if [ $? != 0 ]
 then
@@ -59,6 +66,11 @@ then
     sudo apt-get install ca-certificates curl
     sudo install -m 0755 -d /etc/apt/keyrings
     sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    # Check if the key was added successfully
+    if [ $? -ne 0 ]; then
+        echo "Failed to add Docker GPG key. Please check your network connection or the URL."
+        exit 1
+    fi
     sudo chmod a+r /etc/apt/keyrings/docker.asc
 
     # Add the repository to Apt sources:
@@ -134,7 +146,13 @@ else
 fi
     
 # Create python environment
-conda create -n ovlangvidsumm python=3.10 -y
+# if conda environment already exists, skip creation
+if conda env list | grep -q "ovlangvidsumm"; then
+    echo "Conda environment 'ovlangvidsumm' already exists. Skipping creation."
+else
+    echo "Creating conda environment 'ovlangvidsumm'."
+    conda create -n ovlangvidsumm python=3.10 -y
+fi
 conda activate ovlangvidsumm
 if [ $? -ne 0 ]; then
     echo "Conda environment activation has failed. Please check."

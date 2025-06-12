@@ -20,7 +20,7 @@ if __name__ == "__main__":
     parser.add_argument("--milvus_port", type=int, default=19530)
     parser.add_argument("--milvus_dbname", type=str, default="milvus_db")
     parser.add_argument("--collection_name", type=str, default="video_chunks")
-    parser.add_argument("--retrive_top_k", type=int, default=1)
+    parser.add_argument("--retrive_top_k", type=int, default=5)
     parser.add_argument("--filter_expression", type=str, nargs="?")
     args = parser.parse_args()
 

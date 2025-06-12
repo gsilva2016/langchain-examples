@@ -23,3 +23,6 @@ models/
 ovms/
 *.tar.gz
 yolo*
+Miniforge*
+neo/
+one-by-one*
