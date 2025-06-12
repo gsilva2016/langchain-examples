@@ -87,14 +87,14 @@ if [ -z "$HF_ACCESS_TOKEN" ]; then
     exit 1
 fi
 
-if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then  
+if [ "$1" == "--run_rag" ]; then
     echo "Running RAG"
     
     if [ -z "$QUERY_TEXT" ]; then
     echo "Please set the QUERY_TEXT if you are running --run_rag."
     exit 1
     fi
-    PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/rag.py --query_text "$QUERY_TEXT"
+    PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/rag.py --query_text "$QUERY_TEXT" --filter_expression "$FILTER_EXPR"
     
     echo "RAG completed"
 
