@@ -1,5 +1,12 @@
 #!/bin/bash
 
+HUGGINGFACE_TOKEN=
+
+if [ -z "$HUGGINGFACE_TOKEN" ]; then
+    echo "Please set the HUGGINGFACE_TOKEN variable"
+    exit 1
+fi
+
 dpkg -s sudo &> /dev/null
 if [ $? != 0 ]
 then

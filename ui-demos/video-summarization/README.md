@@ -51,6 +51,10 @@ conda activate ovlangvidsumm
 optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8 # int4 also available
 ```
 
+### Potential Error
+If you see `NameError: name 'List' is not defined. Did you mean: 'pdist'?` then navigate to the `resampler.py` file from the stack trace and add the following import:
+`from typing import List` 
+
 ## Run Video Summarization
 
 Summarize [this sample video](https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4)
