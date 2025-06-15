@@ -17,6 +17,9 @@ fi
 # Set target device for model export
 DEVICE="GPU"
 
+# Set device for LLAMA summary merging
+MERGER_DEVICE="GPU"
+
 # Install Conda
 source activate-conda.sh
 
@@ -169,4 +172,40 @@ else
     curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
     mkdir -p models
     python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM
-fi
+    
+    if [ $? -ne 0 ]; then
+        echo "Model export failed. Please check the logs."
+        exit 1
+    fi
+    echo "Model export completed successfully."
+
+    echo "Creating OpenVINO optimized model files for LLAMA Summary Merger"
+    # device = GPU
+    if [ "$MERGER_DEVICE" == "GPU" ]; then
+        MODEL_DIR="llama-3.2-3b-merger-gpu"
+        # if directory already exists, skip creation
+        if [ -d "$MODEL_DIR" ]; then
+            echo "Directory $MODEL_DIR already exists. Skipping creation."
+        else
+            optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 Llama-3.2-3B-gpu
+            if [ $? -ne 0 ]; then
+                echo "LLAMA model export - GPU failed. Please check the logs."
+                exit 1
+            fi
+            echo "LLAMA model export - GPU completed successfully."
+        fi
+        
+    else
+        MODEL_DIR="llama-3.2-3b-merger-npu"
+        # if directory already exists, skip creation
+        if [ -d "$MODEL_DIR" ]; then
+            echo "Directory $MODEL_DIR already exists. Skipping creation."
+        else
+            optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 --sym --ratio 1.0 --group-size -1 Llama-3.2-3B-npu
+            if [ $? -ne 0 ]; then
+                echo "LLAMA model export - NPU failed. Please check the logs."
+                exit 1
+            fi
+            echo "LLAMA model export - NPU completed successfully."
+        fi
+    fi

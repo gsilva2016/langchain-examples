@@ -1,3 +1,4 @@
+openvino_genai
 distro==1.7.0
 ../langchain-integrations/langchain-videochunk
 langchain_community

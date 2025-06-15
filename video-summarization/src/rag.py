@@ -3,16 +3,6 @@ from time import sleep
 
 from common.milvus.milvus_wrapper import MilvusManager
 
-def pretty_print_docs(docs):
-    print(
-        f"\n{'-' * 100}\n".join(
-            [
-                f"Document {i+1}:\n\n{d.page_content}\nMetadata: {d.metadata}"
-                for i, d in enumerate(docs)
-            ]
-        )
-    )
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()    
     parser.add_argument("--query_text", type=str)
@@ -29,25 +19,18 @@ if __name__ == "__main__":
     vectorstore = milvus_manager.get_vectorstore()
     
     if args.query_text:
-        print(f"Search Query: {args.query_text}")
-            
+        print(f"Search Query has been provided: {args.query_text}")
+        
         if args.filter_expression:
-            docs = vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": args.retrive_top_k, "expr": args.filter_expression}
-            ).invoke(args.query_text)
-        else:
-            docs = vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": args.retrive_top_k}
-            ).invoke(args.query_text)
-                    
+            print(f"With Filter Expression: {args.filter_expression}")
+        
+        docs = vectorstore.similarity_search_with_score(query=args.query_text, k=args.retrive_top_k, expr=args.filter_expression if args.filter_expression else None)
         if docs:
-            print(f"Retrieved {len(docs)} results.")
-            pretty_print_docs(docs)
+            for doc, score in docs:
+                print(f"Document: {doc.page_content}\nScore: {score}\nMetadata: {doc.metadata}\n{'-'*50}")
+            print(f"Total documents retrieved: {len(docs)}")
         else:
-            print("No results found for the query.")
-    
+            print("No results found for the provided query.")
     else:
         print("No query text provided. Please provide a query text to search.")
        

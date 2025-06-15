@@ -84,7 +84,7 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     chain: object = None
     ov_llm: object = None
     summary_prompt: str = None
-
+    cache_dir: str = "./cache/ov_llama_cache"
 
     def __init__(self, model_id: str = "llmware/llama-3.2-3b-instruct-ov", 
                  device: str = "GPU", 
@@ -92,7 +92,8 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
                  batch_size: int = 5,
                  chain : object = None, 
                  hf_token_access_token: str = os.getenv("HF_ACCESS_TOKEN", None), 
-                 api_base: str = os.getenv("OPENVINO_MERGER_API_BASE", None)):
+                 api_base: str = os.getenv("OPENVINO_MERGER_API_BASE", None),
+                 cache_dir: str = "./cache/ov_llama_cache"):
         super().__init__()
 
         self.api_base = api_base
@@ -101,9 +102,11 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         self.max_new_tokens = max_new_tokens
         self.batch_size = batch_size
         self.chain = chain
-        
-        print(f"Running model: {model_id} on device: {device}  batch size: {batch_size} max_new_tokens: {max_new_tokens}")
-        
+        self.cache_dir = cache_dir
+
+        print("------------------------------------------------------------------------------")
+        print(f"Running model: {self.model_id} on device: {self.device}  batch size: {self.batch_size} max_new_tokens: {self.max_new_tokens}")
+
         if hf_token_access_token is None:
             print("export HF_ACCESS_TOKEN=<YOUR_ACCESS_TOKEN> is necessary to download the model from HuggingFace.")
             print("For more information on user access tokens for access to gated models see https://huggingface.co/docs/hub/en/security-tokens")
@@ -111,11 +114,10 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
             
         if not self.api_base is None:
             return
-            
-        if chain is not None:
+
+        if self.chain is not None:
             # use miniCPM chain passed from summarizers
             print("Running summary merger with pre-built LVM chain without API wrapper\n")
-            self.chain = chain
 
             # modified prompt for minicpm, minicpm doesn't adhere to the llama prompt and always skips anomaly scores.
             # this is the only format that works.
@@ -127,7 +129,7 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
             ### Input: {}\n\n"""
 
         else:
-            print(f"Running summary merger with specified {model_id}\n")
+            print(f"Running summary merger with specified {self.model_id}\n")
 
             # openVINO configs for optimized model, apply uint8 quantization for lowering precision of key/value cache in LLMs.
             # apply dynamic quantization for activations
@@ -156,17 +158,23 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
                 })
             self.ov_llm.pipeline.tokenizer.pad_token_id = self.ov_llm.pipeline.tokenizer.eos_token_id
 
-            self.summary_prompt = """Write a response that appropriately completes the request. 
-            ### Instruction: Please create a summary of the overall video highlighting all the important information. How would you rate the scene described on a scale from 0.0 to 1.0, with 0.0 representing a standard scene and 1.0 denoting a scene with suspicious activities? 
-            Please organize your answer according to this example:
+            self.summary_prompt = """
+            You are a surveillance video summarization agent. Given several chunk-level summaries, generate one overall summary and estimate the number of people in the scene based on textual hints.
+            Instructions:
+            - If summaries mention no people or say "empty" or "no visible customers", count that as 0 people.
+            - If someone is mentioned (e.g., "a customer", "a person walks in"), count them.
+            - If uncertain, make your best estimate based on activity.
 
-            **Overall Summary**: A summary of the entire text description in about five sentences or less.
-            **Activity Observed**: Key actions observed in the video.
-            **Potential Suspicious Activity**: List any activities that might indicate suspicious behavior.
-            **Anomaly Score**: A number between 0.0 and 1.0 based on your analysis.
+            Use this format:
+            Overall Summary: A summary of the entire text description in about five sentences or less.
+            Activity Observed: Key actions observed in the video.
+            Potential Suspicious Activity: Key actions observed in the video.
+            Number of people in the scene: <number>
+            Anomaly Score: <0-1, based on severity of suspicious behavior>
 
-            ### Input: {question}
-            ### Answer:"""
+            ### Chunk Summaries: 
+            {question}
+            """
 
             prompt = PromptTemplate.from_template(self.summary_prompt)
             # generation_config = {"skip_prompt": True, "pipeline_kwargs": {"max_new_tokens": max_new_tokens}}
@@ -211,7 +219,7 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
 
         for i in range(num_batches):
             print("--------------------------------------------")
-            print(f"Processing batch {i + 1}...")
+            print(f"Processing batch {i + 1}... having {len(chunks)} chunks")
             batch_texts = chunks[i * self.batch_size:(i + 1) * self.batch_size]
             batch_summary = self.summarize_batch(batch_texts)
             batch_summaries.append(batch_summary)
@@ -225,11 +233,12 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
             batch_summaries = temp
 
         print("--------------------------------------------")
-        print(f"Processing final batch of size {len(batch_summaries)}")
+        print(f"Processing final batch of having {len(batch_summaries)} chunks")
         # if multiple summaries are present, merge them, else use the single summary
         if len(batch_summaries) > 1:
             final_summary = self.summarize_batch(batch_summaries)
         else:
+            print("Final batch has only one chunk present, no need to merge further.")
             final_summary = batch_summaries[0]
 
         # extract anomaly score from final summary using a regex pattern
@@ -258,7 +267,8 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     def extract_anomaly_score(summary):
         # matching based on multiple scenarios observed; goal is to match floating point or integer after Anomaly Score
         # Anomaly Score sometimes is encapsulated within ** and sometimes LLM omits
-        match = re.search(r"\*?\*?Anomaly Score\*?\*?:?\s*(-?\d+(\.\d+)?)", summary, re.DOTALL)
+        match = re.search(r"Anomaly Score:?\s*(-?\d+(\.\d+)?)", summary, re.DOTALL)
+        print(f"Anomaly score regex match: {match}")
         if match:
             return float(match.group(1)) if match.group(1) else 0.0
         return 0.0
