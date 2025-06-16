@@ -1,10 +1,23 @@
 #!/bin/bash
 
+HUGGINGFACE_TOKEN=
+
+if [ -z "$HUGGINGFACE_TOKEN" ]; then
+    echo "Please set the HUGGINGFACE_TOKEN variable"
+    exit 1
+fi
+
 dpkg -s sudo &> /dev/null
 if [ $? != 0 ]
 then
 	DEBIAN_FRONTEND=noninteractive apt update
 	DEBIAN_FRONTEND=noninteractive apt install sudo -y
+fi
+
+# check if curl is installed
+if ! command -v curl &> /dev/null; then
+    echo "curl is not installed. Installing curl"
+    sudo DEBIAN_FRONTEND=noninteractive apt install curl -y
 fi
 
 # Set target device for model export
@@ -53,28 +66,11 @@ echo "Installing Milvus as a standalone service"
 if ! command -v docker &> /dev/null
 then
     echo "Docker is not installed. Installing Docker"
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
 
-    # Add Docker's official GPG key:
-    sudo apt-get update
-    sudo apt-get install ca-certificates curl
-    sudo install -m 0755 -d /etc/apt/keyrings
-    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-    sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-    # Add the repository to Apt sources:
-    echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-    $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
-    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt-get update
-
-    sudo apt-get update
-    sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-    sudo docker run hello-world
-    # check if last command was successful
     if [ $? -ne 0 ]; then
-        echo "Docker installation failed. Please check the installation logs."
+        echo "Docker installation failed. Please check the logs."
         exit 1
     fi
     echo "Docker installed successfully."
@@ -134,7 +130,9 @@ else
 fi
     
 # Create python environment
+echo "Creating conda environment 'ovlangvidsumm'."
 conda create -n ovlangvidsumm python=3.10 -y
+
 conda activate ovlangvidsumm
 if [ $? -ne 0 ]; then
     echo "Conda environment activation has failed. Please check."
@@ -150,5 +148,12 @@ else
     huggingface-cli login --token $HUGGINGFACE_TOKEN
     curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
     mkdir -p models
-    python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM
+    
+    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
+
+    if echo "$output" | grep -q "Tokenizer won't be converted."; then
+        echo ""
+        echo "Error: Tokenizer was not converted successfully, OVMS export model has partially errored. Please check the logs."
+        exit 1
+    fi
 fi

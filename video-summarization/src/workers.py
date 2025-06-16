@@ -27,7 +27,11 @@ def send_summary_request(summary_q: queue.Queue):
             chunk = summary_q.get()
             if chunk is None:
                 # exit the thread if None is received 
-                return  
+                if chunk_summaries:
+                    summary_q.put(None)
+                    break  
+                else:
+                    return  
             chunk_summaries.append(chunk)
         
         if chunk_summaries:
