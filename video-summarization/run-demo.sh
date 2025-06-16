@@ -86,15 +86,15 @@ else
 
         # Wait for OVMS to be ready
         echo "Waiting for OVMS to become available..."
-        for i in {1..5}; do
+        for i in {1..4}; do
             STATUS=$(curl -s $OVMS_URL/v1/config)
             if echo "$STATUS" | grep -q '"state": "AVAILABLE"'; then
                 echo "OVMS is ready."
                 break
             else
-                sleep 6
+                sleep 8
             fi
-            if [ $i -eq 5 ]; then
+            if [ $i -eq 4 ]; then
                 echo "OVMS did not become ready in time. Please check the logs for errors."
                 exit 1
             fi
