@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from langchain.prompts import PromptTemplate
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 import requests
+import openvino_genai as ov_genai
 
 class SummaryMergeScoreToolInput(BaseModel):
     """Input schema for SummaryMergeScore tool.
@@ -77,7 +78,7 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     """The schema that is passed to the model when performing tool calling."""
     
     api_base: str = None
-    model_id: str = "llmware/llama-3.2-3b-instruct-ov"
+    model_path: str = None
     device: str = "GPU"
     max_new_tokens: int = 512
     batch_size: int = 5
@@ -85,8 +86,9 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     ov_llm: object = None
     summary_prompt: str = None
     cache_dir: str = "./cache/ov_llama_cache"
+    pipel: object = None
 
-    def __init__(self, model_id: str = "llmware/llama-3.2-3b-instruct-ov", 
+    def __init__(self, model_path: str = None, 
                  device: str = "GPU", 
                  max_new_tokens: int = 512, 
                  batch_size: int = 5,
@@ -97,15 +99,19 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         super().__init__()
 
         self.api_base = api_base
-        self.model_id = model_id
+        self.model_path = model_path
         self.device = device
         self.max_new_tokens = max_new_tokens
         self.batch_size = batch_size
         self.chain = chain
-        self.cache_dir = cache_dir
-
-        print("------------------------------------------------------------------------------")
-        print(f"Running model: {self.model_id} on device: {self.device}  batch size: {self.batch_size} max_new_tokens: {self.max_new_tokens}")
+        self.cache_dir = os.path.join(cache_dir, self.device.lower())
+        
+        
+        if not os.path.exists(self.model_path):
+            print(f"Model path {self.model_path} does not exist. Please provide a valid model path.")
+            sys.exit(1)
+            
+        print(f"Running model: {self.model_path} on device: {self.device}  batch size: {self.batch_size} max_new_tokens: {self.max_new_tokens}")
 
         if hf_token_access_token is None:
             print("export HF_ACCESS_TOKEN=<YOUR_ACCESS_TOKEN> is necessary to download the model from HuggingFace.")
@@ -129,56 +135,29 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
             ### Input: {}\n\n"""
 
         else:
-            print(f"Running summary merger with specified {self.model_id}\n")
-
-            # openVINO configs for optimized model, apply uint8 quantization for lowering precision of key/value cache in LLMs.
-            # apply dynamic quantization for activations
-            ov_config = {"PERFORMANCE_HINT": "LATENCY",
-                         "NUM_STREAMS": "1",
-                         "CACHE_DIR": "./cache/ov_llama_cache"
-                         }
-            # use langchain openVINO pipeline to load the model
-            self.ov_llm = HuggingFacePipeline.from_model_id(
-                model_id=model_id,
-                task="text-generation",
-                backend="openvino",
-                model_kwargs={
-                    "device": device,
-                    "ov_config": ov_config,
-                    "trust_remote_code": True
-                },
-                pipeline_kwargs={
-                    "max_new_tokens": max_new_tokens,
-                    "do_sample": True,
-                    "top_k": 10,
-                    "temperature": 0.7,
-                    "return_full_text": False,
-                    "repetition_penalty": 1.0,
-                    "encoder_repetition_penalty": 1.0
-                })
-            self.ov_llm.pipeline.tokenizer.pad_token_id = self.ov_llm.pipeline.tokenizer.eos_token_id
+            print(f"Running summary merger with specified {self.model_path}\n")
 
             self.summary_prompt = """
             You are a surveillance video summarization agent. Given several chunk-level summaries, generate one overall summary and estimate the number of people in the scene based on textual hints.
             Instructions:
             - If summaries mention no people or say "empty" or "no visible customers", count that as 0 people.
-            - If someone is mentioned (e.g., "a customer", "a person walks in"), count them.
+            - If someone is mentioned (e.g., "a customer", "a person walks in", "cashier"), count them.
             - If uncertain, make your best estimate based on activity.
+            - Only output one merged summary using the format. Do not add extra chunk summaries or templates.
 
             Use this format:
             Overall Summary: A summary of the entire text description in about five sentences or less.
-            Activity Observed: Key actions observed in the video.
-            Potential Suspicious Activity: Key actions observed in the video.
-            Number of people in the scene: <number>
+            Activity Observed: Please list all the key activities in the video, focusing on any notable actions, details or interactions.
+            Potential Suspicious Activity: Any suspicious behavior or anomalies observed in the video.
+            Number of people in the scene: <number>.
             Anomaly Score: <0-1, based on severity of suspicious behavior>
 
             ### Chunk Summaries: 
             {question}
             """
-
-            prompt = PromptTemplate.from_template(self.summary_prompt)
-            # generation_config = {"skip_prompt": True, "pipeline_kwargs": {"max_new_tokens": max_new_tokens}}
-            self.chain = prompt | self.ov_llm
+        
+            pipeline_config = {"CACHE_DIR": self.cache_dir, "MAX_PROMPT_LEN": 1024, "MIN_RESPONSE_LEN": self.max_new_tokens, "GENERATE_HINT": "BEST_PERF"}
+            self.pipel = ov_genai.LLMPipeline(model_path, device=self.device, **pipeline_config)
 
         self.batch_size = batch_size
     
@@ -252,15 +231,13 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         """
         Summarize a batch of summaries using the chosen model
         """
-        text = " ".join(texts)
-        if not self.ov_llm:
+        text = "\n\n".join(texts)
+
+        if self.chain is not None:
             merged = self.chain.invoke({"video": "", "question": self.summary_prompt.format(text)})
         else:
-            merged = self.chain.invoke({"question": text})
-            '''for chunk in self.chain.stream({"question": text}):
-                # print(chunk, end="", flush=True)
-                merged += chunk'''
-            # print("\n")
+            merged = self.pipel.generate(self.summary_prompt.format(question=text))
+
         return merged.strip()
 
     @staticmethod
@@ -268,7 +245,6 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         # matching based on multiple scenarios observed; goal is to match floating point or integer after Anomaly Score
         # Anomaly Score sometimes is encapsulated within ** and sometimes LLM omits
         match = re.search(r"Anomaly Score:?\s*(-?\d+(\.\d+)?)", summary, re.DOTALL)
-        print(f"Anomaly score regex match: {match}")
         if match:
             return float(match.group(1)) if match.group(1) else 0.0
         return 0.0
