@@ -96,6 +96,7 @@ else
             fi
             if [ $i -eq 4 ]; then
                 echo "OVMS did not become ready in time. Please check the logs for errors."
+		kill $OVMS_PID
                 exit 1
             fi
         done
