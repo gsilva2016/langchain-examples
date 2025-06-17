@@ -114,9 +114,7 @@ echo "bash standalone_embed.sh delete"
 echo ""
 
 # Install OpenVINO Model Server (OVMS) on baremetal
-export LD_LIBRARY_PATH=${PWD}/ovms/lib:$LD_LIBRARY_PATH
 export PATH=$PATH:${PWD}/ovms/bin
-export PYTHONPATH=${PWD}/ovms/lib/python:$PYTHONPATH
 if command -v ovms &> /dev/null; then
     echo "OpenVINO Model Server (OVMS) is already installed."
 else
