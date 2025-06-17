@@ -147,11 +147,6 @@ pip install -r requirements.txt
 if [ "$1" == "--skip" ]; then
     echo "Skipping OpenVINO optimized model file creation"
 else
-    echo "Creating OpenVINO optimized model files for MiniCPM"
-    huggingface-cli login --token $HUGGINGFACE_TOKEN
-    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
-    mkdir -p models
-
     echo "Creating OpenVINO optimized model files for LLAMA Summary Merger"
     MODEL_DIR="llama-3.2-3b-merger-$MERGER_DEVICE"
     if [ "$MERGER_DEVICE" == "GPU" ] || [ "$MERGER_DEVICE" == "CPU" ]; then
@@ -181,8 +176,13 @@ else
         fi
     fi
     
-    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
+    echo "Creating OpenVINO optimized model files for MiniCPM"
+    huggingface-cli login --token $HUGGINGFACE_TOKEN
+    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
+    mkdir -p models
 
+    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
+    
     if echo "$output" | grep -q "Tokenizer won't be converted."; then
         echo ""
         echo "Error: Tokenizer was not converted successfully, OVMS export model has partially errored. Please check the logs."
