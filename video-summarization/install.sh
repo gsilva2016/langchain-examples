@@ -148,5 +148,12 @@ else
     huggingface-cli login --token $HUGGINGFACE_TOKEN
     curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
     mkdir -p models
-    python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM
+    
+    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
+
+    if echo "$output" | grep -q "Tokenizer won't be converted."; then
+        echo ""
+        echo "Error: Tokenizer was not converted successfully, OVMS export model has partially errored. Please check the logs."
+        exit 1
+    fi
 fi
