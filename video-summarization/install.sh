@@ -14,6 +14,12 @@ then
 	DEBIAN_FRONTEND=noninteractive apt install sudo -y
 fi
 
+# check if curl is installed
+if ! command -v curl &> /dev/null; then
+    echo "curl is not installed. Installing curl"
+    sudo DEBIAN_FRONTEND=noninteractive apt install curl -y
+fi
+
 # Set target device for model export
 DEVICE="GPU"
 
@@ -63,33 +69,11 @@ echo "Installing Milvus as a standalone service"
 if ! command -v docker &> /dev/null
 then
     echo "Docker is not installed. Installing Docker"
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
 
-    # Add Docker's official GPG key:
-    sudo apt-get update
-    sudo apt-get install ca-certificates curl
-    sudo install -m 0755 -d /etc/apt/keyrings
-    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-    # Check if the key was added successfully
     if [ $? -ne 0 ]; then
-        echo "Failed to add Docker GPG key. Please check your network connection or the URL."
-        exit 1
-    fi
-    sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-    # Add the repository to Apt sources:
-    echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-    $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
-    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt-get update
-
-    sudo apt-get update
-    sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-    sudo docker run hello-world
-    # check if last command was successful
-    if [ $? -ne 0 ]; then
-        echo "Docker installation failed. Please check the installation logs."
+        echo "Docker installation failed. Please check the logs."
         exit 1
     fi
     echo "Docker installed successfully."
@@ -149,13 +133,9 @@ else
 fi
     
 # Create python environment
-# if conda environment already exists, skip creation
-if conda env list | grep -q "ovlangvidsumm"; then
-    echo "Conda environment 'ovlangvidsumm' already exists. Skipping creation."
-else
-    echo "Creating conda environment 'ovlangvidsumm'."
-    conda create -n ovlangvidsumm python=3.10 -y
-fi
+echo "Creating conda environment 'ovlangvidsumm'."
+conda create -n ovlangvidsumm python=3.10 -y
+
 conda activate ovlangvidsumm
 if [ $? -ne 0 ]; then
     echo "Conda environment activation has failed. Please check."
@@ -171,37 +151,28 @@ else
     huggingface-cli login --token $HUGGINGFACE_TOKEN
     curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
     mkdir -p models
-    python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM
-    
-    if [ $? -ne 0 ]; then
-        echo "Model export failed. Please check the logs."
-        exit 1
-    fi
-    echo "Model export completed successfully."
 
     echo "Creating OpenVINO optimized model files for LLAMA Summary Merger"
-    # device = GPU
-    if [ "$MERGER_DEVICE" == "GPU" ]; then
-        MODEL_DIR="llama-3.2-3b-merger-gpu"
+    MODEL_DIR="llama-3.2-3b-merger-$MERGER_DEVICE"
+    if [ "$MERGER_DEVICE" == "GPU" ] || [ "$MERGER_DEVICE" == "CPU" ]; then
         # if directory already exists, skip creation
         if [ -d "$MODEL_DIR" ]; then
             echo "Directory $MODEL_DIR already exists. Skipping creation."
         else
-            optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 Llama-3.2-3B-gpu
+            optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 $MODEL_DIR
             if [ $? -ne 0 ]; then
-                echo "LLAMA model export - GPU failed. Please check the logs."
+                echo "LLAMA model export - $MERGER_DEVICE failed. Please check the logs."
                 exit 1
             fi
-            echo "LLAMA model export - GPU completed successfully."
+            echo "LLAMA model export - $MERGER_DEVICE completed successfully."
         fi
         
     else
-        MODEL_DIR="llama-3.2-3b-merger-npu"
         # if directory already exists, skip creation
         if [ -d "$MODEL_DIR" ]; then
             echo "Directory $MODEL_DIR already exists. Skipping creation."
         else
-            optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 --sym --ratio 1.0 --group-size -1 Llama-3.2-3B-npu
+            optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 --sym --ratio 1.0 --group-size -1 $MODEL_DIR
             if [ $? -ne 0 ]; then
                 echo "LLAMA model export - NPU failed. Please check the logs."
                 exit 1
@@ -209,3 +180,13 @@ else
             echo "LLAMA model export - NPU completed successfully."
         fi
     fi
+    
+    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
+
+    if echo "$output" | grep -q "Tokenizer won't be converted."; then
+        echo ""
+        echo "Error: Tokenizer was not converted successfully, OVMS export model has partially errored. Please check the logs."
+        exit 1
+    fi
+    echo "Model export completed successfully."
+fi

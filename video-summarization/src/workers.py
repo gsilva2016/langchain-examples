@@ -57,7 +57,7 @@ def send_summary_request(summary_q: queue.Queue):
         else:
             print("Summary Merger: Waiting for chunk summaries to merge")
     
-        time.sleep(70)
+        time.sleep(25)
     
 def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: object):    
     while True:        
