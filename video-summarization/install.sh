@@ -1,7 +1,5 @@
 #!/bin/bash
 
-HUGGINGFACE_TOKEN=
-
 if [ -z "$HUGGINGFACE_TOKEN" ]; then
     echo "Please set the HUGGINGFACE_TOKEN variable"
     exit 1
