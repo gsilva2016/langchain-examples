@@ -15,14 +15,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(parser_txt)
     parser.add_argument("video_file", type=str,
                         help='Path to video you want to summarize.')
-    parser.add_argument("model_dir", type=str,
-                        help="Path to openvino-genai optimized model")
     parser.add_argument("-p", "--prompt", type=str,
                         help="Text prompt. By default set to: `Please summarize this video.`",
                         default="Please summarize this video.")
-    parser.add_argument("-d", "--device", type=str,
-                        help="Target device for running ov MiniCPM-v-2_6",
-                        default="CPU")
     parser.add_argument("-t", "--max_new_tokens", type=int,
                         help="Maximum number of tokens to be generated.",
                         default=500)
@@ -69,7 +64,8 @@ if __name__ == '__main__':
                         chunk_queue, chunking_mechanism="sliding_window"))
         
         print("Main: Getting sampled frames")    
-        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False)
+        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
+                                    resolution=args.resolution)
         # futures.append(sample_future)
         
         print("Main: Starting frame ingestion into Milvus")
@@ -77,11 +73,10 @@ if __name__ == '__main__':
         # futures.append(milvus_future)
         
         print("Main: Starting chunk summary generation")
-        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue)
+        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens)
         # futures.append(cs_future)
 
         print("Main: Starting chunk summary ingestion into Milvus")
-        # Ingest chunk summaries into the running Milvus instance
         milvus_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
         # futures.append(milvus_future)
         
@@ -100,3 +95,8 @@ if __name__ == '__main__':
             time.sleep(0.1)
         
         chunk_queue.put(None)
+        
+        print("Main: Waiting for merge future to complete")
+        merge_future.result()
+
+        print("Main: All tasks completed")
