@@ -1,9 +1,9 @@
 #!/bin/bash
 
-HUGGINGFACE_TOKEN=
+source .env
 
 if [ -z "$HUGGINGFACE_TOKEN" ]; then
-    echo "Please set the HUGGINGFACE_TOKEN variable"
+    echo "Please set the HUGGINGFACE_TOKEN environment variable in .env file"
     exit 1
 fi
 
@@ -19,12 +19,6 @@ if ! command -v curl &> /dev/null; then
     echo "curl is not installed. Installing curl"
     sudo DEBIAN_FRONTEND=noninteractive apt install curl -y
 fi
-
-# Set target device for model export
-DEVICE="GPU"
-
-# Set device for LLAMA summary merging
-MERGER_DEVICE="GPU"
 
 # Install Conda
 source activate-conda.sh
@@ -117,9 +111,7 @@ echo "bash standalone_embed.sh delete"
 echo ""
 
 # Install OpenVINO Model Server (OVMS) on baremetal
-export LD_LIBRARY_PATH=${PWD}/ovms/lib:$LD_LIBRARY_PATH
 export PATH=$PATH:${PWD}/ovms/bin
-export PYTHONPATH=${PWD}/ovms/lib/python:$PYTHONPATH
 if command -v ovms &> /dev/null; then
     echo "OpenVINO Model Server (OVMS) is already installed."
 else
@@ -131,35 +123,58 @@ else
     sudo apt -y install libpython3.12
     pip3 install "Jinja2==3.1.6" "MarkupSafe==3.0.2"
 fi
-    
-# Create python environment
-echo "Creating conda environment 'ovlangvidsumm'."
-conda create -n ovlangvidsumm python=3.10 -y
 
-conda activate ovlangvidsumm
+# Create python environment
+echo "Creating conda environment $CONDA_ENV_NAME."
+conda create -n $CONDA_ENV_NAME python=3.10 -y
+
+conda activate $CONDA_ENV_NAME
 if [ $? -ne 0 ]; then
     echo "Conda environment activation has failed. Please check."
     exit
 fi
 echo 'y' | conda install pip
 pip install -r requirements.txt
+echo ""
 
 if [ "$1" == "--skip" ]; then
-    echo "Skipping OpenVINO optimized model file creation"
+    echo "Skipping all OpenVINO optimized model file creation"
+  
 else
+    echo "Creating OpenVINO optimized model files for MiniCPM"
+    huggingface-cli login --token $HUGGINGFACE_TOKEN
+
+    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
+    mkdir -p models
+
+    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $VLM_DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
+    
+    if echo "$output" | grep -q "Tokenizer won't be converted."; then
+        echo ""
+        echo "Error: Tokenizer was not converted successfully, OVMS export model has partially errored. Please check the logs."
+        exit 1
+    fi
+    echo "Model export completed successfully."
+    echo ""
+
     echo "Creating OpenVINO optimized model files for LLAMA Summary Merger"
-    MODEL_DIR="llama-3.2-3b-merger-$MERGER_DEVICE"
-    if [ "$MERGER_DEVICE" == "GPU" ] || [ "$MERGER_DEVICE" == "CPU" ]; then
+    if [ -z "$SUMMARY_MERGER_LLM_DEVICE" ]; then
+        echo "Please set the SUMMARY_MERGER_LLM_DEVICE environment variable to GPU, CPU or NPU in .env file"
+        exit 1
+    fi
+
+    MODEL_DIR="llama-3.2-3b-merger-$SUMMARY_MERGER_LLM_DEVICE"
+    if [ "$SUMMARY_MERGER_LLM_DEVICE" == "GPU" ] || [ "$SUMMARY_MERGER_LLM_DEVICE" == "CPU" ]; then
         # if directory already exists, skip creation
         if [ -d "$MODEL_DIR" ]; then
             echo "Directory $MODEL_DIR already exists. Skipping creation."
         else
             optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 $MODEL_DIR
             if [ $? -ne 0 ]; then
-                echo "LLAMA model export - $MERGER_DEVICE failed. Please check the logs."
+                echo "LLAMA model export - $SUMMARY_MERGER_LLM_DEVICE failed. Please check the logs."
                 exit 1
             fi
-            echo "LLAMA model export - $MERGER_DEVICE completed successfully."
+            echo "LLAMA model export - $SUMMARY_MERGER_LLM_DEVICE completed successfully."
         fi
         
     else
@@ -169,24 +184,11 @@ else
         else
             optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 --sym --ratio 1.0 --group-size -1 $MODEL_DIR
             if [ $? -ne 0 ]; then
-                echo "LLAMA model export - NPU failed. Please check the logs."
+                echo "LLAMA model export - $SUMMARY_MERGER_LLM_DEVICE failed. Please check the logs."
                 exit 1
             fi
-            echo "LLAMA model export - NPU completed successfully."
+            echo "LLAMA model export - $SUMMARY_MERGER_LLM_DEVICE completed successfully."
         fi
     fi
     
-    echo "Creating OpenVINO optimized model files for MiniCPM"
-    huggingface-cli login --token $HUGGINGFACE_TOKEN
-    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
-    mkdir -p models
-
-    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
-    
-    if echo "$output" | grep -q "Tokenizer won't be converted."; then
-        echo ""
-        echo "Error: Tokenizer was not converted successfully, OVMS export model has partially errored. Please check the logs."
-        exit 1
-    fi
-    echo "Model export completed successfully."
 fi

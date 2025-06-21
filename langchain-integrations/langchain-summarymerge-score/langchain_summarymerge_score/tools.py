@@ -18,6 +18,7 @@ from langchain.prompts import PromptTemplate
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 import requests
 import openvino_genai as ov_genai
+from dotenv import load_dotenv
 
 class SummaryMergeScoreToolInput(BaseModel):
     """Input schema for SummaryMergeScore tool.
@@ -27,8 +28,7 @@ class SummaryMergeScoreToolInput(BaseModel):
     the model when performing tool calling.
     """
     summaries: dict = Field(..., description="Dictionary of summaries to merge")
-
-
+        
 class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     """SummaryMergeScore tool.
 
@@ -81,7 +81,7 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     model_path: str = None
     device: str = "GPU"
     max_new_tokens: int = 512
-    batch_size: int = 5
+    batch_size: int = 8
     chain: object = None
     ov_llm: object = None
     summary_prompt: str = None
@@ -91,14 +91,25 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     def __init__(self, model_path: str = None, 
                  device: str = "GPU", 
                  max_new_tokens: int = 512, 
-                 batch_size: int = 5,
+                 batch_size: int = 8,
                  chain : object = None, 
-                 hf_token_access_token: str = os.getenv("HF_ACCESS_TOKEN", None), 
-                 api_base: str = os.getenv("OPENVINO_MERGER_API_BASE", None),
+                 env_file: str = ".env",
+                 api_base: str = None,
                  cache_dir: str = "./cache/ov_llama_cache"):
         super().__init__()
+        
+        load_dotenv(env_file)
+        
+        hf_token_access_token = os.getenv("HUGGINGFACE_TOKEN", None)
+        if hf_token_access_token is None:
+            print("HUGGINGFACE_TOKEN not found in .env file. Please set it to access gated models.")
+            print("For more information on user access tokens for access to gated models see https://huggingface.co/docs/hub/en/security-tokens")
+            sys.exit(1)
 
         self.api_base = api_base
+        if not self.api_base is None:
+            return
+        
         self.model_path = model_path
         self.device = device
         self.max_new_tokens = max_new_tokens
@@ -106,20 +117,9 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         self.chain = chain
         self.cache_dir = os.path.join(cache_dir, self.device.lower())
         
-        
         if not os.path.exists(self.model_path):
             print(f"Model path {self.model_path} does not exist. Please provide a valid model path.")
             sys.exit(1)
-            
-        print(f"Running model: {self.model_path} on device: {self.device}  batch size: {self.batch_size} max_new_tokens: {self.max_new_tokens}")
-
-        if hf_token_access_token is None:
-            print("export HF_ACCESS_TOKEN=<YOUR_ACCESS_TOKEN> is necessary to download the model from HuggingFace.")
-            print("For more information on user access tokens for access to gated models see https://huggingface.co/docs/hub/en/security-tokens")
-            sys.exit(1)
-            
-        if not self.api_base is None:
-            return
 
         if self.chain is not None:
             # use miniCPM chain passed from summarizers
@@ -138,28 +138,41 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
             print(f"Running summary merger with specified {self.model_path}\n")
 
             self.summary_prompt = """
-            You are a surveillance video summarization agent. Given several chunk-level summaries, generate one overall summary and estimate the number of people in the scene based on textual hints.
-            Instructions:
-            - If summaries mention no people or say "empty" or "no visible customers", count that as 0 people.
-            - If someone is mentioned (e.g., "a customer", "a person walks in", "cashier"), count them.
-            - If uncertain, make your best estimate based on activity.
-            - Only output one merged summary using the format. Do not add extra chunk summaries or templates.
+            You are a video summarization agent. Your job is to merge multiple chunk summaries into one balanced and complete summary.**Important**: Treat all summaries as equally important. Do not prioritize summaries that have more detail or mention suspicious activity - your goal is to combine information, not amplify it.
 
-            Use this format:
-            Overall Summary: A summary of the entire text description in about five sentences or less.
-            Activity Observed: Please list all the key activities in the video, focusing on any notable actions, details or interactions.
-            Potential Suspicious Activity: Any suspicious behavior or anomalies observed in the video.
-            Number of people in the scene: <number>.
-            Anomaly Score: <0-1, based on severity of suspicious behavior>
+            ### Guidelines:
+            - **Extract** the most important insights from all summaries into a concise output. 
+            - Give **equal importance** to each chunk, regardless of its length or uniqueness.
+            - Estimate the number of people in the scene based on textual hints. If summaries mention no people or say "empty" or "no visible customers", count that as 0 people. If someone is mentioned (e.g., "a customer", "a person walks in"), count them.
+            - Do not include the example text below in your response.
+            - Do not include instructions or guidelines in your response.
+            - Do not include any individual chunk summaries in your response.
+            - Only output **one** summary in the exact format below.
 
-            ### Chunk Summaries: 
+            ### Output Format:
+            Overall Summary: Brief (4-6 sentences) summary of all input summaries. Don't overemphasize any single summary.
+            Activity Observed: Bullet points describing key activities from across summaries.
+            Potential Suspicious Activity: Any suspicious behavior or anomalies observed from across summaries.
+            Number of people in the scene: <best estimate. DO NOT overcount>.
+            Anomaly Score: <float from 0 to 1, based on severity of suspicious activity>.
+
+            Now do the same for:
             {question}
             """
-        
-            pipeline_config = {"CACHE_DIR": self.cache_dir, "MAX_PROMPT_LEN": 1024, "MIN_RESPONSE_LEN": self.max_new_tokens, "GENERATE_HINT": "BEST_PERF"}
-            self.pipel = ov_genai.LLMPipeline(model_path, device=self.device, **pipeline_config)
 
-        self.batch_size = batch_size
+            # if device is CPU or GPU
+            if self.device in ["CPU", "GPU"]:
+                pipeline_config = {"CACHE_DIR": self.cache_dir}
+                self.batch_size = batch_size
+            else:
+                # for NPU, we need to set GENERATE_HINT to BEST_PERF, this option is not available for GPU
+                pipeline_config = {"CACHE_DIR": self.cache_dir, "MAX_PROMPT_LEN": 1500, "MIN_RESPONSE_LEN": self.max_new_tokens, "GENERATE_HINT": "BEST_PERF"}
+                # 3 is the max it could handle
+                self.batch_size = 2
+
+            print(f"Running model: {self.model_path} on device: {self.device}  batch size: {self.batch_size} max_new_tokens: {self.max_new_tokens}")
+            self.pipel = ov_genai.LLMPipeline(model_path, device=self.device, **pipeline_config)
+            
     
     def post_request(self, input_data: dict):
         formatted_req = {
@@ -195,24 +208,27 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         print(f"Num of batches to process: {num_batches}")
 
         batch_summaries = []
-
+        
         for i in range(num_batches):
             print("--------------------------------------------")
-            print(f"Processing batch {i + 1}... having {len(chunks)} chunks")
             batch_texts = chunks[i * self.batch_size:(i + 1) * self.batch_size]
+            print(f"Processing batch {i + 1}... having {len(batch_texts)} chunks")
             batch_summary = self.summarize_batch(batch_texts)
             batch_summaries.append(batch_summary)
 
         # recursively merge summaries which are greater than batch size
         while len(batch_summaries) > self.batch_size:
+            print(f"Recursively merging summaries, current batch size: {len(batch_summaries)}")
             temp = []
             for i in range(0, len(batch_summaries), self.batch_size):
                 group = batch_summaries[i: i + self.batch_size]
+                print(f"Processing batch... having {len(group)} chunks")
                 temp.append(self.summarize_batch(group))
             batch_summaries = temp
 
         print("--------------------------------------------")
         print(f"Processing final batch of having {len(batch_summaries)} chunks")
+
         # if multiple summaries are present, merge them, else use the single summary
         if len(batch_summaries) > 1:
             final_summary = self.summarize_batch(batch_summaries)
@@ -236,7 +252,12 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         if self.chain is not None:
             merged = self.chain.invoke({"video": "", "question": self.summary_prompt.format(text)})
         else:
-            merged = self.pipel.generate(self.summary_prompt.format(question=text))
+            if self.device in ["CPU", "GPU"]:
+                config = ov_genai.GenerationConfig()
+                config.max_new_tokens = self.max_new_tokens
+                merged = self.pipel.generate(self.summary_prompt.format(question=text), config=config)
+            else:
+                merged = self.pipel.generate(self.summary_prompt.format(question=text))
 
         return merged.strip()
 

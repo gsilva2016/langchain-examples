@@ -1,4 +1,3 @@
-openvino_genai
 distro==1.7.0
 ../langchain-integrations/langchain-videochunk
 langchain_community
@@ -12,5 +11,4 @@ langchain_milvus
 python-dotenv
 optimum-intel@git+https://github.com/huggingface/optimum-intel.git
 nncf
-openvino-tokenizers[transformers]<=2025.1.0
-openvino==2025.1.0
+openvino-genai==2025.1.0
