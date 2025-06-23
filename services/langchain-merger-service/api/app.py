@@ -59,7 +59,7 @@ def merge_summaries(request: SummaryMergerRequest):
     print(f"Received request to merge summaries and running {summary_merger.name}")
   
     # output = summary_merger.merge_summaries(request.summaries)
-    print(f"Summaries to merge: {request.summaries}")
+    # print(f"Summaries to merge: {request.summaries}")
     output = summary_merger.invoke({"summaries": request.summaries})
     return SummaryMergerResponse(**output)
 
