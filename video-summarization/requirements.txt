@@ -11,4 +11,5 @@ langchain_milvus
 python-dotenv
 optimum-intel@git+https://github.com/huggingface/optimum-intel.git
 nncf
+huggingface_hub
 openvino-genai==2025.1.0

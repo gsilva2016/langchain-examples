@@ -17,10 +17,12 @@ import io
 import base64
 
 load_dotenv()
-SUMMARY_MERGER_ENDPOINT = os.environ.get("SUMMARY_MERGER_ENDPOINT", None)
 OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
+    summary_merger = SummaryMergeScoreTool(
+                    api_base=OVMS_ENDPOINT,
+                )
     while True:
         chunk_summaries = []
         while len(chunk_summaries) < n:
@@ -56,9 +58,6 @@ def send_summary_request(summary_q: queue.Queue, n: int = 3):
             }
             print(f"Summary Merger: Sending {len(chunk_summaries)} chunk summaries for merging")
             try:
-                summary_merger = SummaryMergeScoreTool(
-                    api_base=SUMMARY_MERGER_ENDPOINT,
-                )
                 merge_res = summary_merger.invoke(formatted_req)
                 print(f"Overall Summary: {merge_res['overall_summary']}")
                 print(f"Anomaly Score: {merge_res['anomaly_score']}")

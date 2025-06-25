@@ -33,41 +33,72 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     """SummaryMergeScore tool.
 
     Setup:
-        # TODO: Replace with relevant packages, env vars.
-        Install ``langchain-summarymerge-score`` and set environment variable ``SUMMARYMERGESCORE_API_KEY``.
+        Install ``langchain-summarymerge-score``.
 
         .. code-block:: bash
 
             pip install -U langchain-summarymerge-score
-            export SUMMARYMERGESCORE_API_KEY="your-api-key"
+            Set HUGGINGFACE_TOKEN via `export HUGGINGFACE_TOKEN=<YOUR_ACCESS_TOKEN>`
 
     Instantiation:
+    --- Via OVMS endpoint server (local or remote) ---
+    First ensure you have the OpenVINO Model Server (OVMS) running with the LLM model loaded.
+    Then instantiate the tool with the model ID and OVMS endpoint.
+    
         .. code-block:: python
+            from langchain_summarymerge_score import SummaryMergeScoreTool
 
             tool = SummaryMergeScoreTool(
-                # TODO: init params
+                model_id="meta-llama/Llama-3.2-3B-Instruct",
+                api_base="http://localhost:8013/v3/chat/completions", # your OVMS endpoint
+                device="GPU", # CPU, GPU, or NPU
+                max_new_tokens=512,
+                batch_size=5,
             )
 
     Invocation with args:
         .. code-block:: python
 
-            # TODO: invoke args
-            tool.invoke({...})
+            summaries = {
+            "summaries": {
+                "chunk_0": "text1",
+                "chunk_1": "text2"
+                }
+            }
+
+            output = tool.invoke({"summaries": summaries})
 
         .. code-block:: python
 
-            # TODO: output of invocation
+            {"overall_summary": "Merged summary text", "anomaly_score": 0.5}
+    
+    --- Via local model directory ---    
+        .. code-block:: python
+            from langchain_summarymerge_score import SummaryMergeScoreTool
 
-    Invocation with ToolCall:
+            tool = SummaryMergeScoreTool(
+                model_id="my_meta_llama_3.2_3B_Instruct/", # path to local model directory
+                device="GPU", # CPU, GPU, or NPU
+                max_new_tokens=512,
+                batch_size=5,
+            )
+
+    Invocation with args:
+        .. code-block:: python
+
+            summaries = {
+            "summaries": {
+                "chunk_0": "text1",
+                "chunk_1": "text2"
+                }
+            }
+
+            output = tool.invoke({"summaries": summaries})
 
         .. code-block:: python
 
-            # TODO: invoke args
-            tool.invoke({"args": {...}, "id": "1", "name": tool.name, "type": "tool_call"})
-
-        .. code-block:: python
-
-            # TODO: output of invocation
+            {"overall_summary": "Merged summary text", "anomaly_score": 0.5}            
+            
     """  # noqa: E501
 
     name: str = "Summary Merge Score Tool"
@@ -78,24 +109,21 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     """The schema that is passed to the model when performing tool calling."""
     
     api_base: str = None
-    model_path: str = None
     device: str = "GPU"
     max_new_tokens: int = 512
     batch_size: int = 8
-    chain: object = None
     ov_llm: object = None
     summary_prompt: str = None
-    cache_dir: str = "./cache/ov_llama_cache"
-    pipel: object = None
+    model_id: str = "meta-llama/Llama-3.2-3B-Instruct"
+    ov_pipe: object = None
 
-    def __init__(self, model_path: str = None, 
+    def __init__(self, model_id: str = "meta-llama/Llama-3.2-3B-Instruct",
                  device: str = "GPU", 
                  max_new_tokens: int = 512, 
                  batch_size: int = 8,
-                 chain : object = None, 
                  env_file: str = ".env",
                  api_base: str = None,
-                 cache_dir: str = "./cache/ov_llama_cache"):
+                 ov_pipe: object = None):
         super().__init__()
         
         load_dotenv(env_file)
@@ -105,87 +133,47 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
             print("HUGGINGFACE_TOKEN not found in .env file. Please set it to access gated models.")
             print("For more information on user access tokens for access to gated models see https://huggingface.co/docs/hub/en/security-tokens")
             sys.exit(1)
+            
+        self.model_id = os.getenv("LLAMA_MODEL", model_id)
 
         self.api_base = api_base
-        if not self.api_base is None:
-            return
-        
-        self.model_path = model_path
         self.device = device
         self.max_new_tokens = max_new_tokens
         self.batch_size = batch_size
-        self.chain = chain
-        self.cache_dir = os.path.join(cache_dir, self.device.lower())
-        
-        if not os.path.exists(self.model_path):
-            print(f"Model path {self.model_path} does not exist. Please provide a valid model path.")
-            sys.exit(1)
+        default_prompt = """Write a response that appropriately completes the request.
+        ### Instruction: Your job is to merge multiple chunk summaries into one balanced and complete summary. How would you rate the scene described on a scale from 0.0 to 1.0, with 0.0 representing a standard scene and 1.0 denoting a scene with suspicious activities?
+        Please organize your answer according to this example:
+        Overall Summary: <summary here>
+        Activity Observed: <bullet points>
+        Potential Suspicious Activity: <suspicious behavior if any>
+        Number of people in the scene: <best estimate. DO NOT overcount>.
+        Anomaly Score: <float from 0 to 1, based on severity of suspicious activity>.
+        """
 
-        if self.chain is not None:
-            # use miniCPM chain passed from summarizers
-            print("Running summary merger with pre-built LVM chain without API wrapper\n")
+        self.summary_prompt = os.getenv("SUMMARY_PROMPT", default_prompt)
 
-            # modified prompt for minicpm, minicpm doesn't adhere to the llama prompt and always skips anomaly scores.
-            # this is the only format that works.
-            self.summary_prompt = """Write a response that appropriately completes the request.
-            ### Instruction: Please create a summary of the overall video highlighting all the important information. How would you rate the scene described on a scale from 0.0 to 1.0, with 0.0 representing a standard scene and 1.0 denoting a scene with suspicious activities?
-            Please organize your answer according to this example:
-            **Summary**: A summary of the entire text description highlighting all the important details in less than 10 sentences.
-            **Anomaly Score**: A number between 0.0 and 1.0 based on your analysis.
-            ### Input: {}\n\n"""
-
+        # if device is CPU or GPU
+        if self.device in ["CPU", "GPU"]:
+            self.batch_size = batch_size
         else:
-            print(f"Running summary merger with specified {self.model_path}\n")
-
-            self.summary_prompt = """
-            You are a video summarization agent. Your job is to merge multiple chunk summaries into one balanced and complete summary.**Important**: Treat all summaries as equally important. Do not prioritize summaries that have more detail or mention suspicious activity - your goal is to combine information, not amplify it.
-
-            ### Guidelines:
-            - **Extract** the most important insights from all summaries into a concise output. 
-            - Give **equal importance** to each chunk, regardless of its length or uniqueness.
-            - Estimate the number of people in the scene based on textual hints. If summaries mention no people or say "empty" or "no visible customers", count that as 0 people. If someone is mentioned (e.g., "a customer", "a person walks in"), count them.
-            - Do not include the example text below in your response.
-            - Do not include instructions or guidelines in your response.
-            - Do not include any individual chunk summaries in your response.
-            - Only output **one** summary in the exact format below.
-
-            ### Output Format:
-            Overall Summary: Brief (4-6 sentences) summary of all input summaries. Don't overemphasize any single summary.
-            Activity Observed: Bullet points describing key activities from across summaries.
-            Potential Suspicious Activity: Any suspicious behavior or anomalies observed from across summaries.
-            Number of people in the scene: <best estimate. DO NOT overcount>.
-            Anomaly Score: <float from 0 to 1, based on severity of suspicious activity>.
-
-            Now do the same for:
-            {question}
-            """
-
+            # 2 is the max it could handle
+            self.batch_size = 2
+        
+        if self.api_base is None:
+            if not os.path.exists(self.model_id):
+                print(f"Model path {self.model_id} does not exist. Please provide a valid model path.")
+                sys.exit(1)
+            
             # if device is CPU or GPU
             if self.device in ["CPU", "GPU"]:
-                pipeline_config = {"CACHE_DIR": self.cache_dir}
-                self.batch_size = batch_size
+                pipeline_config = {"CACHE_DIR": f"./cache/llm_{self.device.lower()}", "PERFORMANCE_HINT": "LATENCY"}
             else:
                 # for NPU, we need to set GENERATE_HINT to BEST_PERF, this option is not available for GPU
-                pipeline_config = {"CACHE_DIR": self.cache_dir, "MAX_PROMPT_LEN": 1500, "MIN_RESPONSE_LEN": self.max_new_tokens, "GENERATE_HINT": "BEST_PERF"}
-                # 3 is the max it could handle
-                self.batch_size = 2
+                pipeline_config = {"CACHE_DIR": f"./cache/llm_{self.device.lower()}", "MAX_PROMPT_LEN": 1500, "MIN_RESPONSE_LEN": self.max_new_tokens, "GENERATE_HINT": "BEST_PERF"}
 
-            print(f"Running model: {self.model_path} on device: {self.device}  batch size: {self.batch_size} max_new_tokens: {self.max_new_tokens}")
-            self.pipel = ov_genai.LLMPipeline(model_path, device=self.device, **pipeline_config)
-            
-    
-    def post_request(self, input_data: dict):
-        formatted_req = {
-            "summaries": input_data
-        }
-        try:
-            response = requests.post(url=self.api_base, json=formatted_req)
-            return response.content
-        
-        except Exception as e:
-            print(f"\n\nAPI request failed with exception: {e}")
-            print("Please ensure local endpoint server is running.")
-            sys.exit(-1)
+            self.ov_pipe = ov_genai.LLMPipeline(self.model_id, device=self.device, **pipeline_config)
+
+        print(f"Running model: {self.model_id} on device: {self.device}  batch size: {self.batch_size} max_new_tokens: {self.max_new_tokens}")    
         
     def _run(
         self, summaries: dict, run_manager: Optional[CallbackManagerForToolRun] = None
@@ -193,14 +181,6 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         """
         Merge summaries generated from multiple chunks of text and generate a final summary with an anomaly score
         """
-        if not self.api_base is None:
-            # send the request to the FastAPI endpoint using a ThreadPoolExecutor 
-            with ThreadPoolExecutor() as pool:
-                future = pool.submit(self.post_request, summaries)
-                future_res = future.result().decode("utf-8")
-                res = ast.literal_eval(future.result().decode("utf-8"))
-            return res
-        
         start_time = time.time()
         chunks = list(summaries.values())
 
@@ -249,17 +229,44 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
         """
         text = "\n\n".join(texts)
 
-        if self.chain is not None:
-            merged = self.chain.invoke({"video": "", "question": self.summary_prompt.format(text)})
+        if self.api_base is not None:
+            data = {
+                "model": self.model_id,
+                "max_tokens": self.max_new_tokens,
+                "temperature": 0,
+                "stream": False,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": self.summary_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Now do the same for:\n{text}",
+                    },
+                ]
+            }
+
+            response = requests.post(self.api_base, 
+                                    json=data, 
+                                    headers={"Content-Type": "application/json"})
+
+            if response.status_code == 200:
+                output_json = response.json()
+                output_text = output_json["choices"][0]["message"]["content"]
+                print("Response JSON:", output_json)
+            else:
+                print("Error:", response.status_code, response.text)
+                return
         else:
             if self.device in ["CPU", "GPU"]:
                 config = ov_genai.GenerationConfig()
                 config.max_new_tokens = self.max_new_tokens
-                merged = self.pipel.generate(self.summary_prompt.format(question=text), config=config)
+                output_text = self.ov_pipe.generate(self.summary_prompt.format(question=text), config=config)
             else:
-                merged = self.pipel.generate(self.summary_prompt.format(question=text))
+                output_text = self.ov_pipe.generate(self.summary_prompt.format(question=text))
 
-        return merged.strip()
+        return output_text.strip()
 
     @staticmethod
     def extract_anomaly_score(summary):

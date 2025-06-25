@@ -4,7 +4,6 @@ import queue
 from concurrent.futures.thread import ThreadPoolExecutor
 import time
 
-from langchain_summarymerge_score import SummaryMergeScoreTool
 from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus, generate_chunks
 from common.milvus.milvus_wrapper import MilvusManager
 
@@ -32,8 +31,6 @@ if __name__ == '__main__':
                         default=2)
     parser.add_argument("-r", "--resolution", type=int, nargs=2,
                         help="Desired spatial resolution of input video if different than original. Width x Height")
-    parser.add_argument("-o", "--outfile", type=str,
-                        help="File to write generated text.", default='')
 
     args = parser.parse_args()
     if not os.path.exists(args.video_file):
@@ -47,7 +44,6 @@ if __name__ == '__main__':
     merger_queue = queue.Queue()
     
     # Initialize Milvus
-    
     milvus_manager = MilvusManager()
     
     # Video files or RTSP streams
@@ -66,37 +62,26 @@ if __name__ == '__main__':
         print("Main: Getting sampled frames")    
         sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
                                     resolution=args.resolution)
-        # futures.append(sample_future)
         
         print("Main: Starting frame ingestion into Milvus")
         milvus_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
-        # futures.append(milvus_future)
         
         print("Main: Starting chunk summary generation")
         cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens)
-        # futures.append(cs_future)
 
         print("Main: Starting chunk summary ingestion into Milvus")
         milvus_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
-        # futures.append(milvus_future)
         
         # Summarize the full video, using the subsections summaries from each chunk
-        # Two ways to get overall_summary and anomaly score:
-        # Method 1. Post an HTTP request to call API wrapper for summary merger (shown below)
-    
-        # Method 2. Pass existing minicpm based chain, this does not use the FastAPI route and calls the class functions directly
-        # summary_merger = SummaryMergeScoreTool(chain=chain, device="GPU")
-        # res = summary_merger.invoke({"summaries": chunk_summaries})
+        # Post an HTTP request to OVMS for summary merger (shown below)
         print("Main: Starting chunk summary merger")
         merge_future = pool.submit(send_summary_request, merger_queue)
-        # futures.append(merge_future)
     
         while not all([future.done() for future in futures]):
             time.sleep(0.1)
         
         chunk_queue.put(None)
         
-        print("Main: Waiting for merge future to complete")
         merge_future.result()
-
         print("Main: All tasks completed")
+        print("Main: Lastly, waiting for merge task to complete")

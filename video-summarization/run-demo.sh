@@ -26,17 +26,6 @@ fi
 
 PROJECT_ROOT_DIR=..
 
-if [ -z "$SUMMARY_MERGER_LLM_DEVICE" ]; then
-        echo "Please set the SUMMARY_MERGER_LLM_DEVICE environment variable to GPU, CPU or NPU in .env file"
-        exit 1
-fi
-
-LLAMA_MODEL_DIR="llama-3.2-3b-merger-$SUMMARY_MERGER_LLM_DEVICE"
-if [ ! -d "$LLAMA_MODEL_DIR" ]; then
-    echo "LLAMA model directory $LLAMA_MODEL_DIR does not exist. Please run install.sh first to create the openVINO optimized model."
-    exit 1
-fi
-
 # check if Milvus is running
 if ! docker ps | grep -q "milvus"; then
     echo "Milvus is not running. Starting Milvus..."
@@ -80,7 +69,7 @@ else
         echo "Starting OVMS on port $OVMS_PORT."
         export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${PWD}/ovms/lib
         export PATH=$PATH:${PWD}/ovms/bin
-        export PYTHONPATH=$PYTHONPATH:${PWD}/ovms/lib/python
+        export PYTHONPATH=$PYTHONPATH:${PWD}/ovms/lib/python:${HOME}/miniforge3/lib/python3.12/site-packages
         ovms --rest_port $OVMS_PORT --config_path ./models/config.json &
         OVMS_PID=$!
 
@@ -89,7 +78,8 @@ else
         for i in {1..4}; do
             STATUS=$(curl -s $OVMS_URL/v1/config)
             if echo "$STATUS" | grep -q '"state": "AVAILABLE"'; then
-                echo "OVMS is ready."
+                echo "OVMS is ready with PID: $OVMS_PID"
+                echo ""
                 break
             else
                 sleep 8
@@ -107,37 +97,16 @@ else
         export PATH=${PATH%:${PWD}/ovms/bin}
         export PYTHONPATH=${PYTHONPATH%:${PWD}/ovms/lib/python}
     fi
-
-    echo "Starting Merger Service"
-    python $PROJECT_ROOT_DIR/services/langchain-merger-service/api/app.py --model_path $LLAMA_MODEL_DIR --device $SUMMARY_MERGER_LLM_DEVICE &
-    MERGER_PID=$!
     
-    MERGER_ENDPOINT=$(echo "$SUMMARY_MERGER_ENDPOINT" | cut -d'/' -f1-3)
-    echo "Waiting for Merger Service to start..."
-    while ! curl -s "$MERGER_ENDPOINT" > /dev/null; do
-        sleep 5
-
-        # if PID does not exist and failed for some reason, exit
-        if ! ps -p $MERGER_PID > /dev/null; then
-            echo "Merger Service failed to start. Please check the logs for errors."
-            exit 1
-        fi
-    done
-    echo "Merger Service is running at $MERGER_ENDPOINT"
-
     echo "Running Video Summarizer on video file: $INPUT_FILE"
     PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/main.py $INPUT_FILE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
+    echo ""
 
     echo "Video summarization completed"
+    echo ""
 fi
 
 # terminate services
-if [ -n "$MERGER_PID" ]; then
-    echo "Terminating Merger Service PID: $MERGER_PID"
-    kill -9 $MERGER_PID
-    trap "kill -9 $MERGER_PID; exit" SIGINT SIGTERM
-fi
-
 if [ -n "$OVMS_PID" ]; then
     echo "Terminating OVMS PID: $OVMS_PID"
     kill -9 $OVMS_PID

@@ -154,41 +154,26 @@ else
         echo "Error: Tokenizer was not converted successfully, OVMS export model has partially errored. Please check the logs."
         exit 1
     fi
-    echo "Model export completed successfully."
+    echo "MiniCPM model export completed successfully."
     echo ""
 
-    echo "Creating OpenVINO optimized model files for LLAMA Summary Merger"
     if [ -z "$SUMMARY_MERGER_LLM_DEVICE" ]; then
         echo "Please set the SUMMARY_MERGER_LLM_DEVICE environment variable to GPU, CPU or NPU in .env file"
         exit 1
     fi
+    
+    echo "Creating OpenVINO optimized model files for LLAMA Summary Merger on device: $SUMMARY_MERGER_LLM_DEVICE"
+    if [ "$SUMMARY_MERGER_LLM_DEVICE" == "CPU" ]; then
+        python export_model.py text_generation --source_model $LLAMA_MODEL --config_file_path models/config.json --model_repository_path models --target_device $SUMMARY_MERGER_LLM_DEVICE --weight-format fp16 --kv_cache_precision u8 --pipeline_type LM --overwrite_models
 
-    MODEL_DIR="llama-3.2-3b-merger-$SUMMARY_MERGER_LLM_DEVICE"
-    if [ "$SUMMARY_MERGER_LLM_DEVICE" == "GPU" ] || [ "$SUMMARY_MERGER_LLM_DEVICE" == "CPU" ]; then
-        # if directory already exists, skip creation
-        if [ -d "$MODEL_DIR" ]; then
-            echo "Directory $MODEL_DIR already exists. Skipping creation."
-        else
-            optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 $MODEL_DIR
-            if [ $? -ne 0 ]; then
-                echo "LLAMA model export - $SUMMARY_MERGER_LLM_DEVICE failed. Please check the logs."
-                exit 1
-            fi
-            echo "LLAMA model export - $SUMMARY_MERGER_LLM_DEVICE completed successfully."
-        fi
-        
+    elif [ "$SUMMARY_MERGER_LLM_DEVICE" == "GPU" ]; then
+        python export_model.py text_generation --source_model $LLAMA_MODEL --weight-format int4 --config_file_path models/config.json --model_repository_path models --target_device $SUMMARY_MERGER_LLM_DEVICE --cache 2 --pipeline_type LM --overwrite_models
+
+    elif [ "$SUMMARY_MERGER_LLM_DEVICE" == "NPU" ]; then
+        python export_model.py text_generation --source_model $LLAMA_MODEL --weight-format int4 --config_file_path models/config.json --model_repository_path models --target_device $SUMMARY_MERGER_LLM_DEVICE --max_prompt_len 1500 --pipeline_type LM --overwrite_models
     else
-        # if directory already exists, skip creation
-        if [ -d "$MODEL_DIR" ]; then
-            echo "Directory $MODEL_DIR already exists. Skipping creation."
-        else
-            optimum-cli export openvino -m meta-llama/Llama-3.2-3B-Instruct --weight-format int4 --sym --ratio 1.0 --group-size -1 $MODEL_DIR
-            if [ $? -ne 0 ]; then
-                echo "LLAMA model export - $SUMMARY_MERGER_LLM_DEVICE failed. Please check the logs."
-                exit 1
-            fi
-            echo "LLAMA model export - $SUMMARY_MERGER_LLM_DEVICE completed successfully."
-        fi
+        echo "Invalid SUMMARY_MERGER_LLM_DEVICE value. Please set it to GPU, CPU or NPU in .env file."
+        exit 1
     fi
     
 fi
