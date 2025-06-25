@@ -82,7 +82,7 @@ if __name__ == "__main__":
         print("FastAPI server running on default localhost:8000.")
         
     summary_merger = SummaryMergeScoreTool(
-        model_path=args.model_path,
+        model_id=args.model_path,
         device=args.device,
         batch_size=args.batch_size,
         max_new_tokens=args.max_new_tokens        
