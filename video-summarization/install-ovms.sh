@@ -1,7 +1,13 @@
+export PATH=$PATH:${PWD}/ovms/bin
+if command -v ovms &> /dev/null; then
+    echo "OpenVINO Model Server (OVMS) is already installed."
+    return 0
+fi
+
 echo "Install OpenVINO Model Server (OVMS) on baremetal"	
 source activate-conda.sh
 activate_conda
-conda create -n ovms_env python=3.12
+conda create -n ovms_env python=3.12 -y
 conda activate ovms_env
 conda install pip -y
 

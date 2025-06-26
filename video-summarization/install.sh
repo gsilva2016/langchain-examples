@@ -112,15 +112,10 @@ echo "bash standalone_embed.sh delete"
 echo ""
 
 # Install OpenVINO Model Server (OVMS) on baremetal
-export PATH=$PATH:${PWD}/ovms/bin
-if command -v ovms &> /dev/null; then
-    echo "OpenVINO Model Server (OVMS) is already installed."
+if [ "$1" == "--skip" ]; then
+    bash install-ovms.sh --skip
 else
-    echo "Installing OpenVINO Model Server (OVMS) on baremetal"
-    if [ "$1" == "--skip" ]; then
-        bash install-ovms.sh --skip
-    else
-        bash install-ovms.sh
+    bash install-ovms.sh
 fi
     
 # Create python environment

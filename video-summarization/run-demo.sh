@@ -88,6 +88,7 @@ if [ -n "$MERGER_PID" ]; then
     trap "kill $MERGER_PID; exit" SIGINT SIGTERM
 fi
 
+OVMS_PID=$(pgrep -f "ovms")
 if [ -n "$OVMS_PID" ]; then
     kill $OVMS_PID
     trap "kill $OVMS_PID; exit" SIGINT SIGTERM

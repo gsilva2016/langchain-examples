@@ -18,6 +18,7 @@ OVMS_URL=$(echo "$OVMS_ENDPOINT" | sed -E 's#(https?://[^:/]+:[0-9]+).*#\1#')
 # Check if OVMS is already running
 if lsof -i:$OVMS_PORT | grep -q LISTEN; then
     echo "OVMS is already running on port $OVMS_PORT."
+
 else
     echo "Starting OVMS on port $OVMS_PORT."
     export LD_LIBRARY_PATH=:$LD_LIBRARY_PATH:${PWD}/ovms/lib
@@ -38,7 +39,7 @@ else
         fi
         if [ $i -eq 4 ]; then
             echo "OVMS did not become ready in time. Please check the logs for errors."
-    kill $OVMS_PID
+            kill $OVMS_PID
             exit 1
         fi
     done
