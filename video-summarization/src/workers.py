@@ -17,47 +17,55 @@ import io
 import base64
 
 load_dotenv()
-SUMMARY_MERGER_ENDPOINT = os.environ.get("SUMMARY_MERGER_ENDPOINT", None)
 OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
+VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
 
-def send_summary_request(summary_q: queue.Queue):
+def send_summary_request(summary_q: queue.Queue, n: int = 3):
+    summary_merger = SummaryMergeScoreTool(
+                    api_base=OVMS_ENDPOINT,
+                )
     while True:
         chunk_summaries = []
-        while not summary_q.empty():
-            chunk = summary_q.get()
+        while len(chunk_summaries) < n:
+            chunk = summary_q.get()  
+            # exit the thread if None is received and wait for all current summaries to be processed
             if chunk is None:
-                # exit the thread if None is received 
                 if chunk_summaries:
-                    summary_q.put(None)
-                    break  
+                    summary_q.put(None)  
+                    break
                 else:
-                    return  
+                    return
             chunk_summaries.append(chunk)
         
+        # get atleast n summaries to process, if there are more - process them all
+        # MergeTool will handle them in batches 
+        while True:
+            try:
+                chunk = summary_q.get_nowait()
+                if chunk is None:
+                    if chunk_summaries:
+                        summary_q.put(None)
+                        break
+                    else:
+                        return
+                chunk_summaries.append(chunk)
+            except queue.Empty:
+                break
+
         if chunk_summaries:
             print(f"Summary Merger: Received {len(chunk_summaries)} chunk summaries for merging")
-            
             formatted_req = {
                 "summaries": {chunk["chunk_id"]: chunk["chunk_summary"] for chunk in chunk_summaries}
-
             }
             print(f"Summary Merger: Sending {len(chunk_summaries)} chunk summaries for merging")
             try:
-                summary_merger = SummaryMergeScoreTool(
-                    api_base=SUMMARY_MERGER_ENDPOINT,
-                )
                 merge_res = summary_merger.invoke(formatted_req)
-                
                 print(f"Overall Summary: {merge_res['overall_summary']}")
                 print(f"Anomaly Score: {merge_res['anomaly_score']}")
-
             except Exception as e:
                 print(f"Summary Merger: Request failed: {e}")
-            
         else:
             print("Summary Merger: Waiting for chunk summaries to merge")
-    
-        time.sleep(25)
     
 def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: object):    
     while True:        
@@ -213,7 +221,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                             })
 
         data = {
-            "model": "openbmb/MiniCPM-V-2_6",
+            "model": VLM_MODEL,
             "max_tokens": max_new_tokens,
             "temperature": 0,
             "stream": False,

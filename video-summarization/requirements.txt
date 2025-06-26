@@ -11,5 +11,5 @@ langchain_milvus
 python-dotenv
 optimum-intel@git+https://github.com/huggingface/optimum-intel.git
 nncf
-openvino-tokenizers[transformers]<=2025.1.0
-openvino==2025.1.0
+huggingface_hub
+openvino-genai==2025.1.0

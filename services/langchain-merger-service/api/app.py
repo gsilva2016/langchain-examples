@@ -59,13 +59,14 @@ def merge_summaries(request: SummaryMergerRequest):
     print(f"Received request to merge summaries and running {summary_merger.name}")
   
     # output = summary_merger.merge_summaries(request.summaries)
+    # print(f"Summaries to merge: {request.summaries}")
     output = summary_merger.invoke({"summaries": request.summaries})
     return SummaryMergerResponse(**output)
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()    
-    parser.add_argument("--model_id", nargs="?", default="llmware/llama-3.2-3b-instruct-ov")
+    parser.add_argument("--model_path", required=True, help="Path to LLAMA model")
     parser.add_argument("--device", nargs="?", default="GPU")
     parser.add_argument("--batch_size", default=5, type=int)
     parser.add_argument("--max_new_tokens", default=512, type=int)
@@ -73,12 +74,15 @@ if __name__ == "__main__":
     parser.add_argument("--endpoint_port", default=8000, type=int)
     args = parser.parse_args()
 
+    if not os.path.exists(args.model_path):
+        print(f"Model path {args.model_path} does not exist.")
+        sys.exit(1)
+        
     if not args.endpoint_uri == "" and not args.endpoint_port:
         print("FastAPI server running on default localhost:8000.")
         
-    
     summary_merger = SummaryMergeScoreTool(
-        model_id=args.model_id,
+        model_id=args.model_path,
         device=args.device,
         batch_size=args.batch_size,
         max_new_tokens=args.max_new_tokens        

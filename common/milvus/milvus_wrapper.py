@@ -1,15 +1,18 @@
 from datetime import datetime
 from typing import List, Dict
 import uuid
+import os
 from pymilvus import Collection, connections, utility, db
 from langchain_milvus import Milvus
 from langchain_openvino_multimodal import OpenVINOBlipEmbeddings
+from dotenv import load_dotenv
 
 
 class MilvusManager:
     def __init__(self, milvus_uri: str = "localhost",
                  milvus_port: int = 19530, 
                  milvus_dbname: str = "milvus_db",
+                 env_file: str = ".env",
                  embedding_model: str = "Salesforce/blip-itm-base-coco",
                  txt_embedding_device: str = "GPU",
                  img_embedding_device: str = "GPU",
@@ -17,14 +20,16 @@ class MilvusManager:
         """ 
         Initialize the MilvusManager class. Default values are set for the parameters if not provided.
         """
+        load_dotenv(env_file)
+
         self.milvus_uri = milvus_uri
         self.milvus_port = milvus_port
         self.milvus_dbname = milvus_dbname
-        self.embedding_model = embedding_model
-        self.txt_embedding_device = txt_embedding_device
-        self.img_embedding_device = img_embedding_device
+        self.embedding_model = os.getenv("EMBEDDING_MODEL", embedding_model)
+        self.txt_embedding_device = os.getenv("TXT_EMBEDDING_DEVICE", txt_embedding_device)
+        self.img_embedding_device = os.getenv("IMG_EMBEDDING_DEVICE", img_embedding_device)
         
-        self.ov_blip_embeddings = OpenVINOBlipEmbeddings(ov_text_device=self.txt_embedding_device,
+        self.ov_blip_embeddings = OpenVINOBlipEmbeddings(model_id=self.embedding_model, ov_text_device=self.txt_embedding_device,
                                                         ov_vision_device=self.img_embedding_device)
 
         # Connect to Milvus
