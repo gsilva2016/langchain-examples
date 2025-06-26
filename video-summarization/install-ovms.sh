@@ -25,7 +25,7 @@ conda install pip -y
 # Install dependencies
 sudo apt update -y && sudo apt install -y libxml2 curl
 curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/requirements.txt -o ovms_requirements.txt
-pip install "Jinja2==3.1.6" "MarkupSafe==3.0.2"
+pip install "Jinja2==3.1.6" "MarkupSafe==3.0.2" "huggingface_hub"
 pip install -r ovms_requirements.txt
 
 # Download OVMS
