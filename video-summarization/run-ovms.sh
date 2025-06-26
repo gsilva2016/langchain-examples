@@ -44,8 +44,8 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${PWD}/ovms/lib
 export PATH=$PATH:${PWD}/ovms/bin
 CONDA_PYTHON_PATH="$(python -c 'import site; print(site.getsitepackages()[0])')"
 # conda python path is **explicitly** needed for OVMS to find the installed Python packages in conda, it is not visible otherwise 
-# without this, OVMS doesnt find jinja2 and other packages installed in conda environment, if Jinja2 isn;t found - we will the following warning:
-# Warning: Chat templates not loaded while starting OVMS.
+# without this, OVMS doesnt find jinja2 and other packages installed in conda environment, if Jinja2 isn't found - we will get the following warning:
+# --Warning: Chat templates not loaded-- while starting OVMS. This causes failures for LLAMA inference requests
 export PYTHONPATH=$PYTHONPATH:${PWD}/ovms/lib/python:$CONDA_PYTHON_PATH
 
 ovms --rest_port $OVMS_PORT --config_path ./models/config.json &
