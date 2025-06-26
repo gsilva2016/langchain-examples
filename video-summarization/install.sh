@@ -27,11 +27,12 @@ source activate-conda.sh
 if [ "$1" == "--skip" ]; then
 	echo "Skipping dependencies"
 	activate_conda
-else    
+
+else
     echo "Installing dependencies"
     sudo DEBIAN_FRONTEND=noninteractive apt update
     sudo DEBIAN_FRONTEND=noninteractive apt install git ffmpeg wget -y
-    
+
     CUR_DIR=`pwd`
     cd /tmp
     miniforge_script=Miniforge3-$(uname)-$(uname -m).sh
@@ -70,14 +71,19 @@ then
         echo "Docker installation failed. Please check the logs."
         exit 1
     fi
-    echo "Docker installed successfully."
 
     # Add user to the docker group to prevent permission issues
     sudo groupadd docker
     sudo usermod -aG docker $USER
+    newgrp docker
+
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+    echo "Docker has been installed. Now re-run ./install.sh to apply the Docker group changes. Else container will not load due to permission issues."
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
 fi
 
+echo "Docker installed successfully."
 echo "Proceeding with Milvus setup"
 echo "Downloading and running Milvus"
 echo ""
@@ -93,6 +99,12 @@ if docker ps | grep -q milvus; then
 else
     echo "Starting Milvus..."
     bash standalone_embed.sh start
+
+    if [ $? -ne 0 ]; then
+        echo "Milvus failed to start. Please check the logs."
+        exit 1
+    fi
+
     echo "Milvus has been started. It is running at http://localhost:19530"
     echo ""
 fi
