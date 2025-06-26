@@ -1,6 +1,7 @@
 #!/bin/bash
 
 source .env
+
 if [ -z "$HUGGINGFACE_TOKEN" ]; then
     echo "Please set the HUGGINGFACE_TOKEN environment variable in .env file"
     exit 1
@@ -50,52 +51,11 @@ if [ "$1" == "--run_rag" ]; then
     echo "RAG completed"
 
 else
-    # Read OVMS endpoint and port from .env
-    if [ -z "$OVMS_ENDPOINT" ]; then
-        echo "OVMS_ENDPOINT is not set. Please set it in .env file."
-        exit 1
-    fi
-    OVMS_PORT=$(echo "$OVMS_ENDPOINT" | sed -n 's/.*:\([0-9]\+\).*/\1/p')
-    if [ -z "$OVMS_PORT" ]; then
-        echo "Could not determine OVMS_PORT from OVMS_ENDPOINT ($OVMS_ENDPOINT)."
-        exit 1
-    fi
-    OVMS_URL=$(echo "$OVMS_ENDPOINT" | sed -E 's#(https?://[^:/]+:[0-9]+).*#\1#')
+    bash run-ovms.sh
 
-    # Check if OVMS is already running
-    if lsof -i:$OVMS_PORT | grep -q LISTEN; then
-        echo "OVMS is already running on port $OVMS_PORT."
-    else
-        echo "Starting OVMS on port $OVMS_PORT."
-        export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${PWD}/ovms/lib
-        export PATH=$PATH:${PWD}/ovms/bin
-        export PYTHONPATH=$PYTHONPATH:${PWD}/ovms/lib/python:${HOME}/miniforge3/lib/python3.12/site-packages
-        ovms --rest_port $OVMS_PORT --config_path ./models/config.json &
-        OVMS_PID=$!
-
-        # Wait for OVMS to be ready
-        echo "Waiting for OVMS to become available..."
-        for i in {1..4}; do
-            STATUS=$(curl -s $OVMS_URL/v1/config)
-            if echo "$STATUS" | grep -q '"state": "AVAILABLE"'; then
-                echo "OVMS is ready with PID: $OVMS_PID"
-                echo ""
-                break
-            else
-                sleep 8
-            fi
-            if [ $i -eq 4 ]; then
-                echo "OVMS did not become ready in time. Please check the logs for errors."
-		        kill $OVMS_PID
-                exit 1
-            fi
-        done
-        # OVMS installs are interfering with the openVINO packages installed via pip in conda
-        # unsetting OVMS envs to prevent openVINO errors seen when Merger tries to start
-        # a dockerized way of running ovms should be considered or running it in its own shell
-        export LD_LIBRARY_PATH=${LD_LIBRARY_PATH%:${PWD}/ovms/lib}
-        export PATH=${PATH%:${PWD}/ovms/bin}
-        export PYTHONPATH=${PYTHONPATH%:${PWD}/ovms/lib/python}
+    if [ $? -ne 0 ]; then
+        echo "OVMS setup failed. Please check the logs."
+        exit 1
     fi
     
     echo "Running Video Summarizer on video file: $INPUT_FILE"
@@ -107,6 +67,7 @@ else
 fi
 
 # terminate services
+OVMS_PID=$(pgrep -f "ovms")
 if [ -n "$OVMS_PID" ]; then
     echo "Terminating OVMS PID: $OVMS_PID"
     kill -9 $OVMS_PID

@@ -29,10 +29,10 @@ if [ "$1" == "--skip" ]; then
 	activate_conda
 else    
     echo "Installing dependencies"
-	sudo DEBIAN_FRONTEND=noninteractive apt update
-	sudo DEBIAN_FRONTEND=noninteractive apt install git ffmpeg wget -y
-
-	CUR_DIR=`pwd`
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt install git ffmpeg wget -y
+    
+    CUR_DIR=`pwd`
     cd /tmp
     miniforge_script=Miniforge3-$(uname)-$(uname -m).sh
     [ -e $miniforge_script ] && rm $miniforge_script
@@ -75,7 +75,6 @@ then
     # Add user to the docker group to prevent permission issues
     sudo groupadd docker
     sudo usermod -aG docker $USER
-    newgrp docker
 
 fi
 
@@ -111,18 +110,19 @@ echo "bash standalone_embed.sh delete"
 echo ""
 
 # Install OpenVINO Model Server (OVMS) on baremetal
-export PATH=$PATH:${PWD}/ovms/bin
-if command -v ovms &> /dev/null; then
-    echo "OpenVINO Model Server (OVMS) is already installed."
+if [ "$1" == "--skip" ]; then
+    bash install-ovms.sh --skip
 else
-    echo "Installing OpenVINO Model Server (OVMS) on baremetal"
-    # Download OVMS .deb package
-    wget https://github.com/openvinotoolkit/model_server/releases/download/v2025.1/ovms_ubuntu24_python_on.tar.gz
-    tar -xzvf ovms_ubuntu24_python_on.tar.gz
-    sudo apt update -y && sudo apt install -y libxml2 curl
-    sudo apt -y install libpython3.12
-    pip3 install "Jinja2==3.1.6" "MarkupSafe==3.0.2"
+    bash install-ovms.sh
 fi
+
+if [ $? -ne 0 ]; then
+    echo "OpenVINO Model Server (OVMS) installation failed. Please check the logs."
+    exit 1
+fi
+
+echo "OpenVINO Model Server (OVMS) installation and creation of optimized model files completed successfully."
+echo ""
 
 # Create python environment
 echo "Creating conda environment $CONDA_ENV_NAME."
@@ -133,47 +133,10 @@ if [ $? -ne 0 ]; then
     echo "Conda environment activation has failed. Please check."
     exit
 fi
+
 echo 'y' | conda install pip
 pip install -r requirements.txt
-echo ""
 
-if [ "$1" == "--skip" ]; then
-    echo "Skipping all OpenVINO optimized model file creation"
-  
-else
-    echo "Creating OpenVINO optimized model files for MiniCPM"
-    huggingface-cli login --token $HUGGINGFACE_TOKEN
+echo "All installation steps completed successfully."
 
-    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
-    mkdir -p models
 
-    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $VLM_DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
-    
-    if echo "$output" | grep -q "Tokenizer won't be converted."; then
-        echo ""
-        echo "Error: Tokenizer was not converted successfully, OVMS export model has partially errored. Please check the logs."
-        exit 1
-    fi
-    echo "MiniCPM model export completed successfully."
-    echo ""
-
-    if [ -z "$SUMMARY_MERGER_LLM_DEVICE" ]; then
-        echo "Please set the SUMMARY_MERGER_LLM_DEVICE environment variable to GPU, CPU or NPU in .env file"
-        exit 1
-    fi
-    
-    echo "Creating OpenVINO optimized model files for LLAMA Summary Merger on device: $SUMMARY_MERGER_LLM_DEVICE"
-    if [ "$SUMMARY_MERGER_LLM_DEVICE" == "CPU" ]; then
-        python export_model.py text_generation --source_model $LLAMA_MODEL --config_file_path models/config.json --model_repository_path models --target_device $SUMMARY_MERGER_LLM_DEVICE --weight-format fp16 --kv_cache_precision u8 --pipeline_type LM --overwrite_models
-
-    elif [ "$SUMMARY_MERGER_LLM_DEVICE" == "GPU" ]; then
-        python export_model.py text_generation --source_model $LLAMA_MODEL --weight-format int4 --config_file_path models/config.json --model_repository_path models --target_device $SUMMARY_MERGER_LLM_DEVICE --cache 2 --pipeline_type LM --overwrite_models
-
-    elif [ "$SUMMARY_MERGER_LLM_DEVICE" == "NPU" ]; then
-        python export_model.py text_generation --source_model $LLAMA_MODEL --weight-format int4 --config_file_path models/config.json --model_repository_path models --target_device $SUMMARY_MERGER_LLM_DEVICE --max_prompt_len 1500 --pipeline_type LM --overwrite_models
-    else
-        echo "Invalid SUMMARY_MERGER_LLM_DEVICE value. Please set it to GPU, CPU or NPU in .env file."
-        exit 1
-    fi
-    
-fi
