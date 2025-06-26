@@ -20,6 +20,69 @@ if ! command -v curl &> /dev/null; then
     sudo DEBIAN_FRONTEND=noninteractive apt install curl -y
 fi
 
+# Installing Milvus and Docker
+echo "Installing Milvus as a standalone service"
+if ! command -v docker &> /dev/null
+then
+    echo "Docker is not installed. Installing Docker"
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+
+    if [ $? -ne 0 ]; then
+        echo "Docker installation failed. Please check the logs."
+        exit 1
+    fi
+
+    # Add user to the docker group to prevent permission issues
+    sudo groupadd docker
+    sudo usermod -aG docker $USER
+
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+    echo "Docker has been installed. Now re-run ./install.sh to apply the Docker group changes. Else container will not load due to permission issues."
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+
+    newgrp docker
+fi
+
+echo "Docker is installed. Proceeding with Milvus setup"
+echo "Downloading and running Milvus"
+echo ""
+if [ ! -e standalone_embed.sh ]; then
+    curl -sfL https://raw.githubusercontent.com/milvus-io/milvus/master/scripts/standalone_embed.sh -o standalone_embed.sh
+fi
+
+# Check if Milvus is already running
+if docker ps | grep -q milvus; then
+    echo "Milvus is already running."
+    echo ""
+
+else
+    echo "Starting Milvus..."
+    bash standalone_embed.sh start
+
+    if [ $? -ne 0 ]; then
+        echo "Milvus failed to start. Please check the logs."
+        exit 1
+    fi
+
+    echo "Milvus has been started. It is running at http://localhost:19530"
+    echo ""
+fi
+
+echo "You can check the status of Milvus using the following command:"
+echo "docker ps | grep milvus"
+echo ""
+
+echo "You can stop Milvus using the following command:"
+echo "bash standalone_embed.sh stop"
+echo ""
+
+echo "You can delete Milvus data using the following command:"
+echo "bash standalone_embed.sh delete"
+echo ""
+
 # Install Conda
 source activate-conda.sh
 
@@ -59,69 +122,6 @@ else
     cd ..
 	
 fi
-
-echo "Installing Milvus as a standalone service"
-if ! command -v docker &> /dev/null
-then
-    echo "Docker is not installed. Installing Docker"
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sh get-docker.sh
-
-    if [ $? -ne 0 ]; then
-        echo "Docker installation failed. Please check the logs."
-        exit 1
-    fi
-
-    # Add user to the docker group to prevent permission issues
-    sudo groupadd docker
-    sudo usermod -aG docker $USER
-
-    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-    echo "Docker has been installed. Now re-run ./install.sh to apply the Docker group changes. Else container will not load due to permission issues."
-    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-
-    newgrp docker
-fi
-
-echo "Docker installed successfully."
-echo "Proceeding with Milvus setup"
-echo "Downloading and running Milvus"
-echo ""
-if [ ! -e standalone_embed.sh ]; then
-    curl -sfL https://raw.githubusercontent.com/milvus-io/milvus/master/scripts/standalone_embed.sh -o standalone_embed.sh
-fi
-
-# Check if Milvus is already running
-if docker ps | grep -q milvus; then
-    echo "Milvus is already running."
-    echo ""
-
-else
-    echo "Starting Milvus..."
-    bash standalone_embed.sh start
-
-    if [ $? -ne 0 ]; then
-        echo "Milvus failed to start. Please check the logs."
-        exit 1
-    fi
-
-    echo "Milvus has been started. It is running at http://localhost:19530"
-    echo ""
-fi
-
-echo "You can check the status of Milvus using the following command:"
-echo "docker ps | grep milvus"
-echo ""
-
-echo "You can stop Milvus using the following command:"
-echo "bash standalone_embed.sh stop"
-echo ""
-
-echo "You can delete Milvus data using the following command:"
-echo "bash standalone_embed.sh delete"
-echo ""
 
 # Install OpenVINO Model Server (OVMS) on baremetal
 if [ "$1" == "--skip" ]; then
