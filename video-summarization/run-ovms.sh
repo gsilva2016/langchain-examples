@@ -23,7 +23,8 @@ else
     echo "Starting OVMS on port $OVMS_PORT."
     export LD_LIBRARY_PATH=:$LD_LIBRARY_PATH:${PWD}/ovms/lib
     export PATH=$PATH:${PWD}/ovms/bin
-    export PYTHONPATH=$PYTHONPATH:${PWD}/ovms/lib/python
+    CONDA_PYTHON_PATH="$(python -c 'import site; print(site.getsitepackages()[0])')"
+    export PYTHONPATH=$PYTHONPATH:${PWD}/ovms/lib/python:$CONDA_PYTHON_PATH
     ovms --rest_port $OVMS_PORT --config_path ./models/config.json &
     OVMS_PID=$!
 
