@@ -75,12 +75,14 @@ then
     # Add user to the docker group to prevent permission issues
     sudo groupadd docker
     sudo usermod -aG docker $USER
-    newgrp docker
 
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
     echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
     echo "Docker has been installed. Now re-run ./install.sh to apply the Docker group changes. Else container will not load due to permission issues."
     echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
+    newgrp docker
 fi
 
 echo "Docker installed successfully."
