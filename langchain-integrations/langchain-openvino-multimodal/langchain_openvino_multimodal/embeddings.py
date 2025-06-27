@@ -466,7 +466,7 @@ class OpenVINOBlipEmbeddings(Embeddings):
         if "blip-itm-base-coco" not in model_id:
             raise ValueError("Only BLIP ITM COCO model is currently supported.")
         
-        print("langchain-openvino-multimodal: If you are using a new device for inference, please ensure old models are deleted.")
+        print("langchain-openvino-multimodal-BLIP: If you are using a new device for inference, please ensure old models are deleted.")
         
         self.ov_vision_device = ov_vision_device
         self.ov_text_device = ov_text_device
@@ -475,15 +475,16 @@ class OpenVINOBlipEmbeddings(Embeddings):
             raise ValueError("NPU device is not supported for text embedding.")
         
         self.model = BlipForImageTextRetrieval.from_pretrained(model_id)
-        self.processor = BlipProcessor.from_pretrained(model_id)
+        self.processor = BlipProcessor.from_pretrained(model_id, use_fast=True)
+
         self.model.eval()
         
         url = "https://storage.googleapis.com/sfr-vision-language-research/BLIP/demo.jpg"
         image = Image.open(requests.get(url, stream=True).raw)
 
         text = "A woman and a dog sitting on a beach"
-        inputs = self.processor(image, text, return_tensors="pt")
-                
+        inputs = self.processor(image, text, truncation=True, return_tensors="pt")
+
         ov_vision_proj_model = Path(ov_vision_proj_model)
         ov_text_proj_model = Path(ov_text_proj_model)
 
@@ -518,7 +519,7 @@ class OpenVINOBlipEmbeddings(Embeddings):
         core = ov.Core()
         self.ov_vision_proj = core.compile_model(ov_vision_proj_model, self.ov_vision_device)
         self.ov_text_proj = core.compile_model(ov_text_proj_model, self.ov_text_device)
-        
+
         print(f"{self.model_id} model initialized with vision device: {self.ov_vision_device}, text device: {self.ov_text_device}")
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
@@ -533,7 +534,7 @@ class OpenVINOBlipEmbeddings(Embeddings):
     def embed_query(self, text: str) -> List[float]:
         """Embed text."""
         if text:
-            inputs = self.processor(text=text, return_tensors="pt")
+            inputs = self.processor(text=text, truncation=True, return_tensors="pt")
             inputs = dict(inputs)
             text_proj = self.ov_text_proj(inputs)
             text_proj = list(text_proj.values())[0]
@@ -647,7 +648,7 @@ class OpenVINOClipEmbeddings(Embeddings):
         if "clip-vit-base-patch32" not in model_id:
             raise ValueError("Only CLIP VIT-32 model is currently supported.")
         
-        print("If you are using a new device for inference, please ensure old models are deleted.")
+        print("langchain-openvino-multimodal-CLIP: If you are using a new device for inference, please ensure old models are deleted.")
 
         self.device = device
         self.model = CLIPModel.from_pretrained(model_id)
@@ -659,7 +660,7 @@ class OpenVINOClipEmbeddings(Embeddings):
         image = Image.open(requests.get(url, stream=True).raw)
 
         text = ["Two cats are sleeping peacefully on a couch."]
-        inputs = self.processor(text=text, images=image, return_tensors="pt", padding=True)
+        inputs = self.processor(text=text, images=image, truncation=True, return_tensors="pt", padding=True)
                 
         ov_model_path = Path(ov_model_path)
         core = ov.Core()
@@ -740,7 +741,7 @@ class OpenVINOClipEmbeddings(Embeddings):
     def embed_query(self, text: str) -> List[float]:
         """Embed text."""        
         if text:
-            inputs = self.processor(text=[text], return_tensors="pt", padding=True)
+            inputs = self.processor(text=[text], truncation=True, return_tensors="pt", padding=True)
             inputs = dict(inputs)
             if self.device == "NPU":
                 print("NPU device is not supported for text embedding, using GPU for text embedding.")
