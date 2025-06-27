@@ -19,6 +19,7 @@ sk*
 *.mp4
 *.avi
 export_model.py
+ovms_requirements.txt
 models/
 ovms/
 *.tar.gz

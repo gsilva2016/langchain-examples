@@ -35,6 +35,7 @@ if ! docker ps | grep -q "milvus"; then
         echo "Milvus start script not found. Please run install.sh first to install Milvus." 
         exit 1
     else
+        echo "Starting Milvus..."
         bash standalone_embed.sh start
     fi
 fi
@@ -73,6 +74,11 @@ else
 fi
 
 # terminate services
+if [ -n "$MERGER_PID" ]; then
+    kill $MERGER_PID
+    trap "kill $MERGER_PID; exit" SIGINT SIGTERM
+fi
+
 OVMS_PID=$(pgrep -f "ovms")
 if [ -n "$OVMS_PID" ]; then
     echo "Terminating OVMS PID: $OVMS_PID"

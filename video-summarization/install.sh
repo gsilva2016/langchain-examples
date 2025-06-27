@@ -129,15 +129,7 @@ if [ "$1" == "--skip" ]; then
 else
     bash install-ovms.sh
 fi
-
-if [ $? -ne 0 ]; then
-    echo "OpenVINO Model Server (OVMS) installation failed. Please check the logs."
-    exit 1
-fi
-
-echo "OpenVINO Model Server (OVMS) installation and creation of optimized model files completed successfully."
-echo ""
-
+    
 # Create python environment
 echo "Creating conda environment $CONDA_ENV_NAME."
 conda create -n $CONDA_ENV_NAME python=3.10 -y
