@@ -18,6 +18,7 @@ import base64
 
 load_dotenv()
 OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
+VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
 
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
     summary_merger = SummaryMergeScoreTool(
@@ -220,7 +221,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                             })
 
         data = {
-            "model": "openbmb/MiniCPM-V-2_6",
+            "model": VLM_MODEL,
             "max_tokens": max_new_tokens,
             "temperature": 0,
             "stream": False,

@@ -10,7 +10,7 @@ from common.milvus.milvus_wrapper import MilvusManager
 
 if __name__ == '__main__':
     # Parse inputs
-    parser_txt = "Generate video summarization using LangChain, OpenVINO-genai, and MiniCPM-V-2_6."
+    parser_txt = "Video Summarization using LangChain, OVMS, MiniCPM-V-2_6 and LLAMA-3.2-3B-Instruct\n"
     parser = argparse.ArgumentParser(parser_txt)
     parser.add_argument("video_file", type=str,
                         help='Path to video you want to summarize.')

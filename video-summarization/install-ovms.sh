@@ -48,7 +48,7 @@ else
     curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
     mkdir -p models
 
-    output=$(python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $VLM_DEVICE --cache 2 --pipeline_type VLM 2>&1 | tee /dev/tty)
+    output=$(python export_model.py text_generation --source_model $VLM_MODEL --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $VLM_DEVICE --cache 2 --pipeline_type VLM --overwrite_models 2>&1 | tee /dev/tty)
     
     if echo "$output" | grep -q "Tokenizer won't be converted."; then
         echo ""

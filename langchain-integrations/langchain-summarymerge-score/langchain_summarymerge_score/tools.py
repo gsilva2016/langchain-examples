@@ -135,9 +135,9 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
             sys.exit(1)
             
         self.model_id = os.getenv("LLAMA_MODEL", model_id)
+        self.device = os.getenv("SUMMARY_MERGER_LLM_DEVICE", device)
 
         self.api_base = api_base
-        self.device = device
         self.max_new_tokens = max_new_tokens
         self.batch_size = batch_size
         default_prompt = """Write a response that appropriately completes the request.
