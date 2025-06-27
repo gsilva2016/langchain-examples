@@ -64,7 +64,7 @@ embed.embed_image(arr)
 
 ## OpenVINOBLIP Embeddings
 
-Currently supported CLIP model is: `Salesforce/blip-itm-base-coco`
+Currently supported BLIP model is: `Salesforce/blip-itm-base-coco`
 
 ### Usage
 
