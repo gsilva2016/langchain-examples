@@ -31,8 +31,23 @@ SUMMARY_MERGER_LLM_DEVICE="GPU"
 # Prompt for merging multiple chunk summaries into one summary
 SUMMARY_PROMPT=<default prompt included in the file>
 
+####### Embedding model configuration
+# Currently verified model
+EMBEDDING_MODEL="Salesforce/blip-itm-base-coco"
+
+# Device for text embeddings: CPU, GPU
+# Important Note: If you are changing the device here, please make sure to delete the old blip model files (bin and xml files in current dir)
+TXT_EMBEDDING_DEVICE="GPU"
+
+# Device for img embeddings: CPU, GPU, NPU 
+# Important Note: If you are changing the device here, please make sure to delete the old blip model files (bin and xml files in current dir)
+IMG_EMBEDDING_DEVICE="GPU"
+
 ####### Video summarization configuration
 # Input video file, resolution, and prompt for summarization
+
+# VLM model
+VLM_MODEL="openbmb/MiniCPM-V-2_6"
 
 # Device for the VLM model: CPU, GPU
 VLM_DEVICE="GPU"
@@ -61,7 +76,7 @@ Here is a detailed description of the video.
 QUERY_TEXT=
 
 # Optional Filter expression for the Vector DB query
-# Example: To search only text summaries: "mode=='text'"
+# Example: To search only text summaries: "mode=='text'". To search only frames: "mode=='frame'"
 FILTER_EXPR=
 
 ```
