@@ -5,7 +5,7 @@ import time
 import uuid
 from dotenv import load_dotenv
 from langchain_summarymerge_score import SummaryMergeScoreTool
-from langchain_videochunk import VideoChunkLoader
+from common.rtsploader.rtsploader_wrapper import RTSPChunkLoader
 import numpy as np
 import requests
 from PIL import Image
@@ -164,14 +164,32 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
                             height=resolution[1], ctx=cpu(0))
         else:
             vr = VideoReader(video_path, ctx=cpu(0))
+        
+        # Gather frames with YOLO detections, if any exist
+        all_frames_idx = list(range(len(vr)))
+        detected_frames = [detection.get('frame') for detection in chunk["detected_objects"] if len(detection.get('detected_objects', [])) > 0]
+        if len(detected_frames) >= max_num_frames:
+            # Uniformly sample from detected frames
+            frame_idx = uniform_sample(detected_frames, max_num_frames)
+        else:
+            # Include all detected frames, fill the rest with uniform samples from remaining frames
+            remaining_needed = max_num_frames - len(detected_frames)
+            remaining_frames = [fidx for fidx in all_frames_idx if fidx not in detected_frames]
+            sampled_remaining = uniform_sample(remaining_frames, remaining_needed) if remaining_needed > 0 else []
+            frame_idx = sorted(detected_frames + sampled_remaining)
 
-        frame_idx = [i for i in range(0, len(vr), max(1, int(len(vr) / max_num_frames)))]
-        if len(frame_idx) > max_num_frames:
-            frame_idx = uniform_sample(frame_idx, max_num_frames)
+        # Reindex detected_objects frame numbers to new indices in frame_idx (better context for VLM later)
+        frame_idx_map = {orig_idx: new_idx for new_idx, orig_idx in enumerate(frame_idx)}
+        reindexed_detected_objects = []
+        for detection in chunk["detected_objects"]:
+            orig_frame = detection.get('frame')
+            if orig_frame in frame_idx_map:
+                new_detection = detection.copy()
+                new_detection['frame'] = frame_idx_map[orig_frame]
+                reindexed_detected_objects.append(new_detection)
+        
         frames = vr.get_batch(frame_idx).asnumpy()
-        
         name = os.path.basename(video_path) + os.path.basename(src_video_path)
-        
         if save_frame:
             save_frames(frames, frame_idx, name)
 
@@ -184,17 +202,17 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
             "frame_ids": frame_idx,
             "chunk_path": chunk["chunk_path"],
             "start_time": chunk["start_time"],
-            "end_time": chunk["end_time"]
+            "end_time": chunk["end_time"],
         }
-        vlm_queue.put(sampled)
-        milvus_frames_queue.put(sampled)
+        vlm_queue.put({**sampled, "detected_objects": reindexed_detected_objects})
+        milvus_frames_queue.put({**sampled, "detected_objects": chunk["detected_objects"]})
         
     print("Sampling completed")
     vlm_queue.put(None)
     milvus_frames_queue.put(None)
 
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
-                             prompt: str, max_new_tokens: int):
+                             prompt: str, max_new_tokens: int, yolo_enabled: bool):
     
     while True:        
         try:
@@ -208,7 +226,6 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             continue
 
         print(f"VLM: Generating chunk summary for chunk {chunk['chunk_id']}")
-
         content = [{"type": "text", "text": prompt}]
         for frame in chunk["frames"]:
             img = Image.fromarray(frame)
@@ -219,7 +236,18 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                             "type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}
                             })
-
+        
+        if yolo_enabled:
+            detected_objects = chunk["detected_objects"]
+            detection_text = (
+                "Additionally, the following frames contained detected objects:\n"
+                + "\n".join(
+                    f"Frame {d.get('frame')}: {', '.join(str(obj) for obj in d.get('detected_objects', []))}"
+                    for d in detected_objects if d.get('detected_objects')
+                )
+                + "\nPlease use this information in your analysis."
+            )
+            content.append({"type": "text", "text": detection_text})
         data = {
             "model": VLM_MODEL,
             "max_tokens": max_new_tokens,
@@ -265,13 +293,31 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
     milvus_summaries_queue.put(None)
     merger_queue.put(None)
         
-def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue, chunking_mechanism: str = "sliding_window"):
-    loader = VideoChunkLoader(
-        video_path=video_path,
-        chunking_mechanism=chunking_mechanism,
-        chunk_duration=chunk_duration,
-        chunk_overlap=chunk_overlap)
-    
+def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue, camera_fps: int,
+                    yolo_enabled: bool, yolo_path: str, yolo_sample_rate: int, chunking_mechanism: str = "sliding_window"):
+
+    if yolo_enabled:
+        chunk_args={
+                "window_size": chunk_duration * fps, 
+                "fps": fps,
+                "overlap": chunk_overlap,
+                "yolo_enabled": True,
+                "yolo_path": yolo_path, 
+                "yolo_sample_rate": yolo_sample_rate
+            }
+    else: 
+        chunk_args={
+            "window_size": chunk_duration * fps, 
+            "fps": fps,
+            "overlap": chunk_overlap,
+        }
+        
+    loader = RTSPChunkLoader(
+        rtsp_url=video_path,
+        chunk_type=chunking_mechanism,
+        chunk_args=chunk_args
+    )
+
     for doc in loader.lazy_load():
         print(f"Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
         chunk = {
@@ -282,6 +328,7 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
             "start_time": doc.metadata['start_time'],
             "end_time": doc.metadata['end_time'],
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "detected_objects": doc.metadata["detected_objects"]
         }            
         chunk_queue.put(chunk)
     print(f"Chunk generation completed for {video_path}")

@@ -31,6 +31,20 @@ if __name__ == '__main__':
                         default=2)
     parser.add_argument("-r", "--resolution", type=int, nargs=2,
                         help="Desired spatial resolution of input video if different than original. Width x Height")
+    parser.add_argument("--camera_fps", type=int,
+                        help="Frames per second of the camera/video.",
+                        default=15)
+    parser.add_argument("--yolo_enabled", action="store_true",
+                        help="Enable YOLO-based chunking.")
+    parser.add_argument("--yolo_path", type=str,
+                        help="Path to YOLO model weights.",
+                        default="yolo11n.pt")
+    parser.add_argument("--yolo_sample_rate", type=int,
+                        help="Sample rate for YOLO detection.",
+                        default=5)
+    parser.add_argument("--chunking_mechanism", type=str,
+                        help="Chunking mechanism to use (e.g., sliding_window, fixed).",
+                        default="sliding_window")
 
     args = parser.parse_args()
     if not os.path.exists(args.video_file):
@@ -56,8 +70,18 @@ if __name__ == '__main__':
     with ThreadPoolExecutor() as pool:
         print("Main: Starting RTSP camera streamer")
         for video in videos.values():
-            futures.append(pool.submit(generate_chunks, video, args.chunk_duration, args.chunk_overlap, 
-                        chunk_queue, chunking_mechanism="sliding_window"))
+            futures.append(pool.submit(
+                generate_chunks,
+                video,
+                args.chunk_duration,
+                args.chunk_overlap,
+                chunk_queue,
+                args.camera_fps,
+                args.yolo_enabled,
+                args.yolo_path,
+                args.yolo_sample_rate,
+                args.chunking_mechanism
+            ))
         
         print("Main: Getting sampled frames")    
         sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
@@ -67,7 +91,7 @@ if __name__ == '__main__':
         milvus_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
         
         print("Main: Starting chunk summary generation")
-        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens)
+        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, args.yolo_enabled)
 
         print("Main: Starting chunk summary ingestion into Milvus")
         milvus_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                

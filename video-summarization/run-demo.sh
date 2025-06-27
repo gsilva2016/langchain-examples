@@ -58,8 +58,14 @@ else
         exit 1
     fi
     
-    echo "Running Video Summarizer on video file: $INPUT_FILE"
-    PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/main.py $INPUT_FILE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
+    echo "Running Video Summarizer on video file: $INPUT_FILE"    
+    PYTHON_CMD="PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/main.py $INPUT_FILE -r $RESOLUTION_X $RESOLUTION_Y -p \"$PROMPT\""
+    
+    if [ "$YOLO_ENABLED" = "TRUE" ]; then
+        PYTHON_CMD="$PYTHON_CMD --yolo_enabled"
+    fi
+    
+    eval $PYTHON_CMD
     echo ""
 
     echo "Video summarization completed"

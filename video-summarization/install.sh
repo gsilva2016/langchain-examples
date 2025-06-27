@@ -153,4 +153,7 @@ pip install -r requirements.txt
 
 echo "All installation steps completed successfully."
 
-
+if [ "$YOLO_ENABLED" = "TRUE" ]; then
+    pip install ultralytics
+    yolo export model=yolo11n.pt # creates 'yolo11n.pt'
+fi
