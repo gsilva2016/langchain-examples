@@ -74,6 +74,8 @@ Here is a detailed description of the video.
 # Query text to search for in the Vector DB
 # Example: "woman shoplifting"
 QUERY_TEXT=
+# Query image to search for in the Vector DB (path to the image file)
+QUERY_IMG=
 
 # Optional Filter expression for the Vector DB query
 # Example: To search only text summaries: "mode=='text'". To search only frames: "mode=='frame'"
@@ -94,7 +96,7 @@ command can be used to skip the re-install of dependencies.
 ./install.sh --skip
 ```
 
-## Convert and Save Optimized MiniCPM-V-2_6
+## Convert and Save Optimized MiniCPM-V-2_6 VLM and Llama-3.2-3B LLM
 
 This section can be skipped if you ran `install.sh` the first time. The `install.sh` script runs this command as part of 
 its setup. This section is to give the user flexibility to tweak the `export_model.py` command for certain model parameters to run on OVMS.
@@ -126,6 +128,14 @@ OR
 python export_model.py text_generation --source_model meta-llama/Llama-3.2-3B-Instruct --config_file_path models/config.json --model_repository_path models --target_device NPU --max_prompt_len 1500 --pipeline_type LM --overwrite_models
 ```
 
+## Model Server
+
+Pipeline uses [OVMS (OpenVINO Model Server)](https://github.com/openvinotoolkit/model_server) for serving the VLM and LLM.
+
+## Embedding Model
+
+This pipeline uses BLIP for creating embeddings out of text and images. The subsequent vectors are stored in MIlvus DB. Model details are present in the configuration file `.env`.
+
 ## Run Video Summarization
 
 Summarize [this sample video](https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4)
@@ -144,7 +154,19 @@ Note: if the demo has already been run, you can use the following command to ski
 
 Run RAG on the images and summaries you have ingested in the vector DB.
 
-Open `run_demo.sh` and enter the QUERY_TEXT in `QUERY_TEXT=` and `FILTER_EXPR`(optional) variable. Then run the script.
+3 types of RAG searches are possible currently:
+
+1. Text based similarity search
+Open `run_demo.sh` and enter the QUERY_TEXT in `QUERY_TEXT=` and `FILTER_EXPR`(optional) variable. 
+
+2. Image based similarity search
+Open `run_demo.sh` and enter the QUERY_IMG (path to image) in `QUERY_TEXT=` and `FILTER_EXPR`(optional) variable. 
+
+3. Query based on certain filter expressions (no text or image)
+Open `run_demo.sh` and enter the `FILTER_EXPR` variable. Then run the script.
+
+Examples of various types of `FILTER_EXPR` that can be created is annotated in `run_demo.sh`. Various suported operators can be referred to in Milvus' documentation [here](https://milvus.io/docs/boolean.md) 
+
 ```
 ./run_demo.sh --run_rag
 ```

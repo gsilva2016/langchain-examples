@@ -33,7 +33,7 @@ class MilvusManager:
                                                         ov_vision_device=self.img_embedding_device)
 
         # Connect to Milvus
-        self._connect_to_milvus()
+        self._connect_to_milvus(collection_name)
 
         self.vectorstore = Milvus(
             embedding_function=self.ov_blip_embeddings,
@@ -44,7 +44,7 @@ class MilvusManager:
             drop_old=False,
         )
 
-    def _connect_to_milvus(self):
+    def _connect_to_milvus(self, collection_name: str) -> None:
         """
         Connect to the Milvus database and set up the database.
         """
@@ -55,9 +55,10 @@ class MilvusManager:
 
         collections = utility.list_collections()
         for name in collections:
+            if name == collection_name:
             # Not droppingthe collection if it exists for now
             # utility.drop_collection(name)
-            print(f"Collection {name} exists.")
+                print(f"Collection {name} exists.")
 
     def embed_txt_and_store(self, data: List[Dict]) -> Dict:
         """
@@ -73,6 +74,15 @@ class MilvusManager:
             
             # Prepare texts and metadata
             texts = [item["chunk_summary"] for item in data]
+            # Getting all objects associated with each chunk
+            objects = []
+            for item in data:
+                uniq = set()
+                for i in item["detected_objects"]:
+                    for obj in i.get("objects", []):
+                        uniq.add(obj)
+                objects.append(uniq)
+
             metadatas = [
                 {
                     "video_path": item["video_path"],
@@ -83,10 +93,11 @@ class MilvusManager:
                     "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                     "frame_id": -1, # not required for text but required field for metadata since image needs it
                     "mode": "text",
+                    "detected_objects": str(list(objects[idx]))
                 }
-                for item in data
+                for idx, item in enumerate(data)
             ]
-
+                
             ids = [f"{meta['chunk_id']}_{uuid.uuid4()}" for meta in metadatas]
             self.vectorstore.add_embeddings(texts=texts, ids=ids, metadatas=metadatas, embeddings=embeddings)
 
@@ -106,9 +117,16 @@ class MilvusManager:
             print(f"Generated {len(embeddings)} img embeddings of Shape: {embeddings[0].shape}")
             
             # Prepare texts and metadata
-            texts = [chunk["chunk_path"] for emb in embeddings]
-            metadatas = [
-                {
+            texts = [chunk["chunk_path"] for _ in embeddings]
+
+            metadatas = []
+            for idx in chunk["frame_ids"]:
+                objects = []
+                for x in chunk.get("detected_objects", []):
+                    if x.get("frame") == idx:
+                        objects = x.get("objects", [])
+                        break
+                metadatas.append({
                     "video_path": chunk["video_path"],
                     "chunk_id": chunk["chunk_id"],
                     "frame_id": idx,
@@ -117,9 +135,8 @@ class MilvusManager:
                     "chunk_path": chunk["chunk_path"],
                     "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                     "mode": "image",
-                }
-                for idx in chunk["frame_ids"]
-            ]
+                    "detected_objects": str(objects)
+                })
 
             ids = [f"{meta['chunk_id']}_{uuid.uuid4()}" for meta in metadatas]
             self.vectorstore.add_embeddings(texts=texts, ids=ids, metadatas=metadatas, embeddings=embeddings)
@@ -138,7 +155,7 @@ class MilvusManager:
             collection = Collection(collection_name)
             collection.load()
 
-            results = collection.query(expr, output_fields=["chunk_id", "chunk_path", "video_id"])
+            results = collection.query(expr, output_fields=["chunk_id", "chunk_path", "video_id", "frame_id"])
             print(f"{len(results)} vectors returned for query: {expr}")
 
             return {"status": "success", "chunks": results}
