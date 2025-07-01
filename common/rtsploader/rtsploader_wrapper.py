@@ -11,6 +11,21 @@ from collections import deque
 import threading
 import queue
 import uuid
+import torch
+import torchvision.transforms as T
+from PIL import Image
+
+COCO_CLASSES = [
+    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+    "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+    "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+    "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+    "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+    "hair drier", "toothbrush"
+]
 
 class RTSPChunkLoader(BaseLoader):
     def __init__(self, rtsp_url: str, chunk_type: str, chunk_args: Dict, output_dir: str = "output_chunks"):
@@ -23,7 +38,7 @@ class RTSPChunkLoader(BaseLoader):
         self.fps = chunk_args.get("fps", 15)  # Safe and defaulted (shared configuration)
         self.window_size = chunk_args['window_size']
         self.overlap =  chunk_args['overlap']
-        self.yolo_enabled = chunk_args.get("yolo_enabled", False)
+        self.obj_detect_enabled = chunk_args.get("obj_detect_enabled", False)
         self.frame_id = 0
         self.frame_buffer = deque(maxlen=self.window_size + self.overlap) # Use a deque for effeciency
         self.chunk_queue = queue.Queue() # Use thread safe queue for writing frames
@@ -31,25 +46,26 @@ class RTSPChunkLoader(BaseLoader):
         self.consumer_thread = threading.Thread(target=self._consume_chunks, daemon=True) # Start consumer thread for background buffer writing
         self.consumer_thread.start()
         
-        # yolo config setup
-        if self.yolo_enabled:
-            from ultralytics import YOLO
-            self.yolo_sample_rate = chunk_args.get("yolo_sample_rate", 5)  # Run inference every Nth frame
-            self.yolo_path = chunk_args.get("yolo_path", "yolo11n.pt") # Default to using OV yolov11n
-            self.model = YOLO(self.yolo_path)
-            self.yolo_queue = deque()
+        # Object Detection config setup
+        if self.obj_detect_enabled:
+            # Load OV Model
+            from dfine_ovinfer import OvInfer        
+            self.dfine_sample_rate = chunk_args.get("dfine_sample_rate", 5)
+            self.dfine_path = chunk_args.get("dfine_path", 'ov_dfine/dfine-l-coco.xml')
+            self.model = OvInfer(self.dfine_path)
+            self.dfine_queue = deque()
             self.detection_results = {}
             self.detection_lock = threading.Lock()
-            self.yolo_thread = threading.Thread(target=self._yolo_sliding_window, daemon=True) # Start yolo thread for background inferencing
-            self.yolo_thread.start()
-        
+            self.dfine_thread = threading.Thread(target=self._dfine_sliding_window, daemon=True) # Start object detection thread for background inferencing
+            self.dfine_thread.start()
+
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
     def _consume_chunks(self):
         while not self.stop_event.is_set():
             try:
-                frames, output_path, fps = self.chunk_queue.get(timeout=1)
+                frames, output_path, fps, done_consuming = self.chunk_queue.get(timeout=1)
                 if not frames:
                     return
                     
@@ -65,6 +81,10 @@ class RTSPChunkLoader(BaseLoader):
                 
                 # Indicate consumer saving task is complete
                 self.chunk_queue.task_done()
+
+                if done_consuming:
+                    done_consuming.set()
+
             except queue.Empty:
                 continue
             except Exception as e:
@@ -75,8 +95,8 @@ class RTSPChunkLoader(BaseLoader):
             self.buffer_start_time = current_time
     
         # Send every Nth frame to YOLO queue
-        if self.yolo_enabled and self.frame_id % self.yolo_sample_rate == 0:
-            self.yolo_queue.append((self.frame_id, frame))
+        if self.obj_detect_enabled and self.frame_id % self.dfine_sample_rate == 0:
+            self.dfine_queue.append((self.frame_id, frame))
             
         # Add frame to buffer 
         self.frame_buffer.append((self.frame_id, frame))
@@ -96,7 +116,7 @@ class RTSPChunkLoader(BaseLoader):
             frames_to_save = []
             detected_objects = []
 
-            if self.yolo_enabled:
+            if self.obj_detect_enabled:
                 with self.detection_lock:
                     for i, (fid, f) in enumerate(self.frame_buffer):
                         frames_to_save.append(f)
@@ -113,8 +133,12 @@ class RTSPChunkLoader(BaseLoader):
                 for i, (fid, f) in enumerate(self.frame_buffer):
                     frames_to_save.append(f)
 
+            # Add consumer synchronization event to prevent path being yielded before video fully written to
+            done_consuming = threading.Event()
             # Producer adding frames to Queue, triggering background consumer to write to file
-            self.chunk_queue.put((frames_to_save, chunk_path, self.fps))
+            self.chunk_queue.put((frames_to_save, chunk_path, self.fps, done_consuming))
+            # Wait until file is saved before yielding doc
+            done_consuming.wait()
 
             # Remove the oldest frames, excluding overlap
             frames_to_remove = self.window_size - self.overlap
@@ -126,34 +150,55 @@ class RTSPChunkLoader(BaseLoader):
 
         return None, None, None, None, None, []
     
-    def _yolo_sliding_window(self):
+    def _dfine_sliding_window(self):
         while not self.stop_event.is_set():
-            if not self.yolo_queue:
+            if not self.dfine_queue:
                 time.sleep(0.01)
                 continue
 
             try:
-                # Get first frame (FIFO)
-                frame_id, frame = self.yolo_queue.popleft()
+                frame_id, frame = self.dfine_queue.popleft()
+                #print(f"frame shape: {frame.shape}, Type: {type(frame)}, dtype: {frame.dtype}")
 
-                # Perform inference using YOLO
-                results = self.model(frame, verbose=False)
-                detected_classes = []
+                # Process image
+                inputs = self.model.process_image(frame, keep_ratio=True)
+                # Perform inference on image
+                outputs = self.model.infer(inputs)
 
-                for result in results:
-                    for box in result.boxes.data:
-                        class_id = int(box[5].item())
-                        class_name = self.model.names[class_id]
-                        detected_classes.append(class_name)
+                # Save bboxes on image for validation
+                #self.model.draw_and_save_image(outputs, "rtsp_result.jpg")
+
+                #labels, boxes, scores = outputs
+                labels = outputs["labels"]
+                boxes = outputs["boxes"]
+                scores = outputs["scores"]
+
+                detection_threshold = 0.7
+                objects = []
+                for lbl, box, score in zip(labels[0], boxes[0], scores[0]):
+                    if score >= detection_threshold:
+                        class_id = int(lbl)
+                        class_name = COCO_CLASSES[class_id] if class_id < len(COCO_CLASSES) else f"id:{class_id}"
+
+                        x1 = box[0] / self.model.ratio
+                        y1 = box[1] / self.model.ratio
+                        x2 = box[2] / self.model.ratio
+                        y2 = box[3] / self.model.ratio
+
+                        objects.append({
+                            "label": class_name,
+                            "bbox": [float(x1), float(y1), float(x2), float(y2)]
+                        })
 
                 with self.detection_lock:
                     self.detection_results[frame_id] = {
                         "frame_id": frame_id,
-                        "objects": detected_classes
+                        "objects": objects
                     }
 
             except Exception as e:
-                print(f"[YOLO ERROR] Inference failed: {e}")
+                print(f"[D-FINE OV ERROR] Inference failed: {e}")
+
 
     def lazy_load(self) -> Iterator[Document]:
         """Lazily load RTSP stream chunks as LangChain Documents."""
