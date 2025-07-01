@@ -52,7 +52,9 @@ rtsp_loader = RTSPChunkLoader(
         "overlap": 15, # Number of frames of overlap between consecutive chunks
         "obj_detect_enabled": True,
         "dfine_path": 'ov_dfine/dfine-l-coco.xml', # Path to the D-FINE model
-        "dfine_sample_rate": 5 # Every Nth frame is infernced upon
+        "dfine_sample_rate": 5, # Every 5th frame is infernced upon
+        "detection_threshold": 0.7 # Only capture objects with detection confidence greater than 0.7
+
     },
     output_dir='cam_1',
 )
@@ -69,10 +71,9 @@ Sliding Window Chunk metadata:
 'start_time': '2025-06-02T18:29:00.315088',
 'end_time': '2025-06-02T18:29:05.412887',
 'source': 'rtsp://<user>:<pass>@<camera-ip>',
-'detected_objects': [{'frame': 0,
-			'objects': [
-			    {'label': 'person', 'bbox': [2219.25439453125, 647.7630615234375, 2593.083740234375, 1600.69482421875]},
-			    {'label': 'surfboard', 'bbox': [2779.221435546875, 416.277099609375, 3021.228271484375, 1071.7967529296875]},
-			    {'label': 'chair', 'bbox': [115.33447265625, 1249.074951171875, 444.9425354003906, 1729.0045166015625]},
-			    {'label': 'couch', 'bbox': [106.50575256347656, 1886.9461669921875, 1974.1636962890625, 2147.5087890625]}]}, ...]
+'detected_objects': [{'frame': 0, 'objects': [
+			{'label': 'person', 'bbox': [2219.25, 647.76, 2593.08, 1600.69]},
+			{'label': 'surfboard', 'bbox': [2779.22, 416.27, 3021.22, 1071.79]},
+			{'label': 'chair', 'bbox': [115.33, 1249.07, 444.94, 1729.00]},
+			{'label': 'couch', 'bbox': [106.50, 1886.94, 1974.16, 2147.50]}]}, ...]
 ```

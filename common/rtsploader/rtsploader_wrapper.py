@@ -53,6 +53,7 @@ class RTSPChunkLoader(BaseLoader):
             self.dfine_sample_rate = chunk_args.get("dfine_sample_rate", 5)
             self.dfine_path = chunk_args.get("dfine_path", 'ov_dfine/dfine-l-coco.xml')
             self.model = OvInfer(self.dfine_path)
+            self.detection_threshold = chunk_args.get("detection_threshold", 0.7)
             self.dfine_queue = deque()
             self.detection_results = {}
             self.detection_lock = threading.Lock()
@@ -173,10 +174,9 @@ class RTSPChunkLoader(BaseLoader):
                 boxes = outputs["boxes"]
                 scores = outputs["scores"]
 
-                detection_threshold = 0.7
                 objects = []
                 for lbl, box, score in zip(labels[0], boxes[0], scores[0]):
-                    if score >= detection_threshold:
+                    if score >= self.detection_threshold:
                         class_id = int(lbl)
                         class_name = COCO_CLASSES[class_id] if class_id < len(COCO_CLASSES) else f"id:{class_id}"
 
@@ -244,3 +244,21 @@ class RTSPChunkLoader(BaseLoader):
             if self.yolo_enabled:
                 self.yolo_thread.join()
             print("[INFO] RTSP stream processing complete.")
+
+rtsp_loader = RTSPChunkLoader(
+    rtsp_url="rtsp://admin:intel123!@192.168.2.108:554",
+    chunk_type="sliding_window", # Traditional sliding window with overlap
+    chunk_args={
+        "window_size": 85, # Number of frames per chunk
+        "fps": 15, # The framerate you save the chunk at
+        "overlap": 15, # Number of frames of overlap between consecutive chunks
+        "obj_detect_enabled": True,
+        "dfine_path": 'ov_dfine/dfine-l-coco.xml', # Path to the DFINE model
+        "dfine_sample_rate": 5, # Every Nth frame is infernced upon
+        "detection_threshold": 0.8
+    },
+    output_dir='cam_1',
+)
+
+for doc in rtsp_loader.lazy_load():
+    print(f"Sliding Window Chunk metadata: {doc.metadata}")
