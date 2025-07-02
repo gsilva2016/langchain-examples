@@ -150,6 +150,8 @@ fi
 
 echo 'y' | conda install pip
 pip install -r requirements.txt
+echo "Downloading and Converting detection model"
+bash ../common/rtsploader/download_model.sh
 
 echo "All installation steps completed successfully."
 
