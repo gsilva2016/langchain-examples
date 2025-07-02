@@ -51,7 +51,7 @@ class RTSPChunkLoader(BaseLoader):
             # Load OV Model
             from dfine_ovinfer import OvInfer        
             self.dfine_sample_rate = chunk_args.get("dfine_sample_rate", 5)
-            self.dfine_path = chunk_args.get("dfine_path", 'ov_dfine/dfine-l-coco.xml')
+            self.dfine_path = chunk_args.get("dfine_path", 'ov_dfine/dfine-s-coco.xml')
             self.model = OvInfer(self.dfine_path)
             self.detection_threshold = chunk_args.get("detection_threshold", 0.7)
             self.dfine_queue = deque()

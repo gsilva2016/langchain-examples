@@ -37,7 +37,7 @@ source: 'rtsp://<user>:<pass>@<camera-ip>',
 ## Object Detection enabled
 First, download and export [D-FINE](https://github.com/Peterande/D-FINE/tree/master) object detection model. Alternatively, if you have your own D-FINE model (in OpenVINO format), provide the path to the model as argument in RTSPChunkLoader.
 ```
-bash download_model.sh  # Creates 'ov_dfine/dfine-l-coco.xml & .bin'
+bash download_model.sh  # Creates 'ov_dfine/dfine-s-coco.xml & .bin'
 ```
 
 ```
@@ -51,7 +51,7 @@ rtsp_loader = RTSPChunkLoader(
         "fps": 15, # The framerate you save the chunk at
         "overlap": 15, # Number of frames of overlap between consecutive chunks
         "obj_detect_enabled": True,
-        "dfine_path": 'ov_dfine/dfine-l-coco.xml', # Path to the D-FINE model
+        "dfine_path": 'ov_dfine/dfine-s-coco.xml', # Path to the D-FINE model
         "dfine_sample_rate": 5, # Every 5th frame is infernced upon
         "detection_threshold": 0.7 # Only capture objects with detection confidence greater than 0.7
 
