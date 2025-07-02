@@ -1,3 +1,9 @@
+"""
+Copyright (c) 2024 The D-FINE Authors. All Rights Reserved.
+ 
+Source file from DFINE: https://github.com/Peterande/D-FINE/blob/master/tools/inference/openvino_inf.py
+"""
+
 import cv2
 import numpy as np
 import openvino
