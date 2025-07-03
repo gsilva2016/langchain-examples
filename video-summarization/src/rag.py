@@ -31,8 +31,7 @@ class RAG:
             "ffmpeg",
             "-ss", str(start_time),
             "-i", chunk_path,
-            "-t", str(clip_length),
-            "-c", "copy",
+            "-c:v", "libx264",
             output_path,
             "-y"
         ]
@@ -50,9 +49,7 @@ class RAG:
                 print(f"With Filter Expression: {filter_expression}")
 
             docs = self.vectorstore.similarity_search_with_score(query=query_text, k=retrive_top_k, expr=filter_expression if filter_expression else None)
-            
-            docs = self.vectorstore.similarity_search_by_vector
-        
+                    
         elif query_img:
             print("Performing similarity search with image query:")
             print(f"Image Path: {query_img}")
