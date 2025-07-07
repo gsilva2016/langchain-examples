@@ -27,7 +27,7 @@ ipython = "^9.0.1"
 langchain-community = "^0.3.19"
 langchain-openai = "^0.3.7"
 torchaudio = "^2.6.0"
-transformers = "4.48.0"
+transformers = ">=4.50.0"
 sounddevice = "^0.5.1"
 soundfile = "^0.13.1"
 
