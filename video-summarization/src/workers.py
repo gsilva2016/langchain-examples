@@ -164,7 +164,7 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
     milvus_frames_queue.put(None)
 
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
-                             prompt: str, max_new_tokens: int, yolo_enabled: bool):
+                             prompt: str, max_new_tokens: int, obj_detect_enabled: bool):
     
     while True:        
         try:
@@ -193,20 +193,31 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                             "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}
                             })
         
-        # Add the object detection metadata to the content
-        if yolo_enabled:
+        # Add the object detection metadata to the VLM request
+        if obj_detect_enabled:
             detected_objects = chunk["detected_objects"]
+
+            # Format detected objects for LLM input
+            detection_lines = []
+            for d in detected_objects:
+                frame_num = d.get('frame')
+                objs = d.get('objects', [])
+                if objs:
+                    obj_descriptions = []
+                    for obj in objs:
+                        label = obj.get('label')
+                        bbox = obj.get('bbox')
+                        bbox_str = f"[{', '.join([f'{v:.2f}' for v in bbox])}]" if bbox else "[]"
+                        obj_descriptions.append(f"{label} at {bbox_str}")
+                    detection_lines.append(f"Frame {frame_num}: " + "; ".join(obj_descriptions))
             detection_text = (
-                "Additionally, the following frames contained detected objects:\n"
-                + "\n".join(
-                    f"Frame {d.get('frame')}: {str(obj.get('label')) + ' located at: ' + ', '.join([str(bb) for bb in obj.get('bbox')]) for obj in d.get('objects')}"
-                    for d in detected_objects if d.get('detected_objects')
-                )
-                + "\nPlease use this information in your analysis."
+                "Detected objects per frame:\n" +
+                "\n".join(detection_lines) +
+                "\nPlease use this information in your analysis."
             )
             content.append({"type": "text", "text": detection_text}) 
 
-        # Package the request data for the VLM model
+        # Package all request data for the VLM
         data = {
             "model": VLM_MODEL,
             "max_tokens": max_new_tokens,
