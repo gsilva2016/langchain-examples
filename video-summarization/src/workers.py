@@ -143,9 +143,9 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
             break
 
         # Sample frames from the video chunk
-        print(f"Sampling frames from chunk: {chunk['chunk_id']} and Num frames sampled: {frames.shape[0]}")        
         video_path = chunk["chunk_path"]
         frames_dict = sampler.sample_frames_from_video(video_path, chunk["detected_objects"])
+        print(f"Sampling frames from chunk: {chunk['chunk_id']} and Num frames sampled: {frames_dict["frames"].shape[0]}")        
 
         sampled = {
             "video_path": chunk["video_path"],

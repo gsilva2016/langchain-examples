@@ -20,6 +20,14 @@ CONDA_ENV_NAME=ovlangvidsumm
 # OVMS endpoint for all models
 OVMS_ENDPOINT="http://localhost:8013/v3/chat/completions"
 
+####### Video ingestion configuration
+CAMERA_FPS=15
+CHUNKING_MECHANISM="sliding_window"
+OBJ_DETECT_ENABLED="TRUE"
+OBJ_DETECT_MODEL_PATH="ov_dfine/dfine-s-coco.xml"
+OBJ_DETECT_SAMPLE_RATE=5
+OBJ_DETECT_THRESHOLD=0.7
+
 ####### Summary merger configuration
 
 # Name of the LLM model for summary merging in Hugging Face format (model runs on OVMS model server)
