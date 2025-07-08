@@ -3,6 +3,7 @@ import os
 import queue
 from concurrent.futures.thread import ThreadPoolExecutor
 import time
+from dotenv import load_dotenv
 
 from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus, generate_chunks
 from common.milvus.milvus_wrapper import MilvusManager
@@ -37,6 +38,16 @@ if __name__ == '__main__':
         print(f"{args.video_file} does not exist.")
         exit()
 
+    # Load environment variables
+    load_dotenv()
+    camera_fps = int(os.getenv("CAMERA_FPS", 15))
+    chunking_mechanism = os.getenv("CHUNKING_MECHANISM", "sliding_window")
+    obj_detect_enabled = os.getenv("OBJ_DETECT_ENABLED", "TRUE").upper() == "TRUE"
+    obj_detect_path = os.getenv("OBJ_DETECT_PATH", "ov_dfine/dfine-s-coco.xml")
+    obj_detect_sample_rate = int(os.getenv("OBJ_DETECT_SAMPLE_RATE", 5))
+    obj_detect_threshold = int(os.getenv("OBJ_DETECT_THRESHOLD", 0.7))
+
+    # Create queues for inter-thread communication
     chunk_queue = queue.Queue()
     milvus_frames_queue = queue.Queue()
     milvus_summaries_queue = queue.Queue()
@@ -56,9 +67,20 @@ if __name__ == '__main__':
     with ThreadPoolExecutor() as pool:
         print("Main: Starting RTSP camera streamer")
         for video in videos.values():
-            futures.append(pool.submit(generate_chunks, video, args.chunk_duration, args.chunk_overlap, 
-                        chunk_queue, chunking_mechanism="sliding_window"))
-        
+            futures.append(pool.submit(
+                generate_chunks,
+                video,
+                args.chunk_duration,
+                args.chunk_overlap,
+                chunk_queue,
+                camera_fps,
+                obj_detect_enabled,
+                obj_detect_path,
+                obj_detect_sample_rate,
+                obj_detect_threshold,
+                chunking_mechanism
+            ))
+ 
         print("Main: Getting sampled frames")    
         sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
                                     resolution=args.resolution)
@@ -67,7 +89,7 @@ if __name__ == '__main__':
         milvus_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
         
         print("Main: Starting chunk summary generation")
-        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens)
+        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled)
 
         print("Main: Starting chunk summary ingestion into Milvus")
         milvus_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
