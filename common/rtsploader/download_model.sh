@@ -9,7 +9,7 @@ cd D-FINE
 wget https://github.com/Peterande/storage/releases/download/dfinev1.0/dfine_s_coco.pth
 # Install conversion requirements
 pip install -r requirements.txt
-pip install onnx onnxsim
+pip install onnx onnxsim opencv-python
 model=s
 python tools/deployment/export_onnx.py \
   --check \
