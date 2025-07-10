@@ -160,22 +160,19 @@ class RTSPChunkLoader(BaseLoader):
 
             try:
                 frame_id, frame = self.dfine_queue.popleft()
-                #print(f"frame shape: {frame.shape}, Type: {type(frame)}, dtype: {frame.dtype}")
 
                 # Process image
                 inputs = self.model.process_image(frame, keep_ratio=True)
+
                 # Perform inference on image
                 outputs = self.model.infer(inputs)
 
                 # Save bboxes on image for validation
                 #self.model.draw_and_save_image(outputs, "rtsp_result.jpg")
 
-                #labels, boxes, scores = outputs
                 labels = outputs["labels"]
                 boxes = outputs["boxes"]
                 scores = outputs["scores"]
-
-                #print(f"!!!Lables inside dfine inference: {labels}")
 
                 objects = []
                 for lbl, box, score in zip(labels[0], boxes[0], scores[0]):
@@ -183,7 +180,6 @@ class RTSPChunkLoader(BaseLoader):
                         class_id = int(lbl)
                         class_name = COCO_CLASSES[class_id] if class_id < len(COCO_CLASSES) else f"id:{class_id}"
 
-                        #print(f"Class name in detection: {class_name}")
                         x1 = box[0] / self.model.ratio
                         y1 = box[1] / self.model.ratio
                         x2 = box[2] / self.model.ratio
