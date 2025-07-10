@@ -174,15 +174,12 @@ class RTSPChunkLoader(BaseLoader):
                 boxes = outputs["boxes"]
                 scores = outputs["scores"]
 
-                #print(f"!!!Lables inside dfine inference: {labels}")
-
                 objects = []
                 for lbl, box, score in zip(labels[0], boxes[0], scores[0]):
                     if score >= self.detection_threshold:
                         class_id = int(lbl)
                         class_name = COCO_CLASSES[class_id] if class_id < len(COCO_CLASSES) else f"id:{class_id}"
 
-                        #print(f"Class name in detection: {class_name}")
                         x1 = box[0] / self.model.ratio
                         y1 = box[1] / self.model.ratio
                         x2 = box[2] / self.model.ratio
