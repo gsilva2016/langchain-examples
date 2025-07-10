@@ -7,11 +7,10 @@ Optionally, you can enable a D-FINE object detection model to record detected ob
 from rtsploader_wrapper import RTSPChunkLoader
 
 rtsp_loader = RTSPChunkLoader(
-    rtsp_url="rtsp://<user>:<pass>@<camera-ip>",
+    rtsp_url="rtsp://<user>:<pass>@<camera-ip>", # Can also be a local video file path
     chunk_type="sliding_window", # Traditional sliding window with overlap
     chunk_args={
         "window_size": 85, # Number of frames per chunk
-        "fps": 15, # The framerate you save the chunk at
         "overlap": 15, # Number of frames of overlap between consecutive chunks
         "obj_detect_enabled": False,
     },
@@ -44,11 +43,10 @@ bash download_model.sh  # Creates 'ov_dfine/dfine-s-coco.xml & .bin'
 from rtsploader_wrapper import RTSPChunkLoader
 
 rtsp_loader = RTSPChunkLoader(
-    rtsp_url="rtsp://<user>:<pass>@<camera-ip>",
+    rtsp_url="rtsp://<user>:<pass>@<camera-ip>", # Can also be a local video file path
     chunk_type="sliding_window", # Traditional sliding window with overlap
     chunk_args={
         "window_size": 85, # Number of frames per chunk
-        "fps": 15, # The framerate you save the chunk at
         "overlap": 15, # Number of frames of overlap between consecutive chunks
         "obj_detect_enabled": True,
         "dfine_path": 'ov_dfine/dfine-s-coco.xml', # Path to the D-FINE model

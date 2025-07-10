@@ -30,12 +30,12 @@ COCO_CLASSES = [
 class RTSPChunkLoader(BaseLoader):
     def __init__(self, rtsp_url: str, chunk_type: str, chunk_args: Dict, output_dir: str = "output_chunks"):
         self.rtsp_url = rtsp_url
+        self.is_file = os.path.isfile(rtsp_url)
         self.chunk_type = chunk_type
         self.output_dir = output_dir
         self.cap = None
         self.buffer_start_time = None
         self.recording = False  # Flag to track when to save frames
-        self.fps = chunk_args.get("fps", 15)  # Safe and defaulted (shared configuration)
         self.window_size = chunk_args['window_size']
         self.overlap =  chunk_args['overlap']
         self.obj_detect_enabled = chunk_args.get("obj_detect_enabled", False)
@@ -49,10 +49,11 @@ class RTSPChunkLoader(BaseLoader):
         # Object Detection config setup
         if self.obj_detect_enabled:
             # Load OV Model
-            from dfine_ovinfer import OvInfer        
+            from common.rtsploader.dfine_ovinfer import OvInfer
             self.dfine_sample_rate = chunk_args.get("dfine_sample_rate", 5)
             self.dfine_path = chunk_args.get("dfine_path", 'ov_dfine/dfine-s-coco.xml')
             self.model = OvInfer(self.dfine_path)
+            print("Loaded DFINE for detection")
             self.detection_threshold = chunk_args.get("detection_threshold", 0.7)
             self.dfine_queue = deque()
             self.detection_results = {}
@@ -159,17 +160,16 @@ class RTSPChunkLoader(BaseLoader):
 
             try:
                 frame_id, frame = self.dfine_queue.popleft()
-                #print(f"frame shape: {frame.shape}, Type: {type(frame)}, dtype: {frame.dtype}")
 
                 # Process image
                 inputs = self.model.process_image(frame, keep_ratio=True)
+
                 # Perform inference on image
                 outputs = self.model.infer(inputs)
 
                 # Save bboxes on image for validation
                 #self.model.draw_and_save_image(outputs, "rtsp_result.jpg")
 
-                #labels, boxes, scores = outputs
                 labels = outputs["labels"]
                 boxes = outputs["boxes"]
                 scores = outputs["scores"]
@@ -211,54 +211,64 @@ class RTSPChunkLoader(BaseLoader):
         except Exception as e:
             print("[ERROR] FFMPEG backend is not available, please ensure FFMPEG is installed and accessible.")
             return
-        
+
+        # Get fps from video/stream
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+
+        # Check if video is file in order to add proper frame delay for object detection
+        if self.is_file:
+            print(f"[INFO] Processing local video file: {self.rtsp_url}")
+            frame_delay = 0.5 / self.fps
+        else:
+            frame_delay = 0
+
         try:
             while True:
+                start = time.time()
                 ret, frame = self.cap.read()
                 if not ret:
                     print("[INFO] Stream ended or error reading frame.")
                     break
 
-                # Record time when the cap starts reading frames from rtsp url
-                current_time = time.time()
+                if self.is_file:
+                    # Record relative time in seconds for video file
+                    current_time = self.frame_id / self.fps
+                else:
+                    # Record time when the cap starts reading frames from rtsp url
+                    current_time = time.time()
 
                 # Use sliding window for ingestion scheme
                 chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(frame, current_time)
 
                 if chunk_path and formatted_time:
+                    if self.is_file:
+                        start_time = f"{start_time:.2f}s"
+                        end_time = f"{end_time:.2f}s"
+                    else:
+                        start_time = datetime.fromtimestamp(start_time).isoformat()
+                        end_time = datetime.fromtimestamp(end_time).isoformat()
+
                     yield Document(
                         page_content=f"Processed RTSP chunk saved at {chunk_path}",
                         metadata={
                             "chunk_id": chunk_id,
                             "chunk_path": chunk_path,
-                            "start_time": datetime.fromtimestamp(start_time).isoformat(),
-                            "end_time": datetime.fromtimestamp(end_time).isoformat(),
+                            "start_time": start_time,
+                            "end_time": end_time,
                             "source": self.rtsp_url,
                             "detected_objects": detections
-                        },
+                        }
                     )
+
+                elapsed = time.time() - start
+                if frame_delay > elapsed:
+                    time.sleep(frame_delay - elapsed)
+
         finally:
             self.cap.release()
             self.stop_event.set()
             self.consumer_thread.join()
-            if self.yolo_enabled:
-                self.yolo_thread.join()
+            if self.obj_detect_enabled:
+                print(f"Dfine thread joining!")
+                self.dfine_thread.join()
             print("[INFO] RTSP stream processing complete.")
-
-rtsp_loader = RTSPChunkLoader(
-    rtsp_url="rtsp://admin:intel123!@192.168.2.108:554",
-    chunk_type="sliding_window", # Traditional sliding window with overlap
-    chunk_args={
-        "window_size": 85, # Number of frames per chunk
-        "fps": 15, # The framerate you save the chunk at
-        "overlap": 15, # Number of frames of overlap between consecutive chunks
-        "obj_detect_enabled": True,
-        "dfine_path": 'ov_dfine/dfine-l-coco.xml', # Path to the DFINE model
-        "dfine_sample_rate": 5, # Every Nth frame is infernced upon
-        "detection_threshold": 0.8
-    },
-    output_dir='cam_1',
-)
-
-for doc in rtsp_loader.lazy_load():
-    print(f"Sliding Window Chunk metadata: {doc.metadata}")
