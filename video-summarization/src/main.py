@@ -25,11 +25,11 @@ if __name__ == '__main__':
                         help="Maximum number of frames to be sampled per chunk for inference. Set to a smaller number if OOM.",
                         default=32)
     parser.add_argument("-c", "--chunk_duration", type=int,
-                        help="Maximum length in seconds for each chunk of video.",
-                        default=30)
+                        help="Maximum number of frames per video chunk (e.g., the default of 450 = 30s at 15fps).",
+                        default=450)
     parser.add_argument("-v", "--chunk_overlap", type=int,
-                        help="Overlap in seconds between chunks of input video.",
-                        default=2)
+                        help="Overlap in frames between chunks of input video (e.g., the default of 30 = 2s at 15fps).",
+                        default=30)
     parser.add_argument("-r", "--resolution", type=int, nargs=2,
                         help="Desired spatial resolution of input video if different than original. Width x Height")
 
@@ -40,13 +40,12 @@ if __name__ == '__main__':
 
     # Load environment variables
     load_dotenv()
-    camera_fps = int(os.getenv("CAMERA_FPS", 15))
     chunking_mechanism = os.getenv("CHUNKING_MECHANISM", "sliding_window")
     obj_detect_enabled = os.getenv("OBJ_DETECT_ENABLED", "TRUE").upper() == "TRUE"
     obj_detect_path = os.getenv("OBJ_DETECT_PATH", "ov_dfine/dfine-s-coco.xml")
     obj_detect_sample_rate = int(os.getenv("OBJ_DETECT_SAMPLE_RATE", 5))
-    obj_detect_threshold = int(os.getenv("OBJ_DETECT_THRESHOLD", 0.7))
-
+    obj_detect_threshold = float(os.getenv("OBJ_DETECT_THRESHOLD", 0.7))
+    
     # Create queues for inter-thread communication
     chunk_queue = queue.Queue()
     milvus_frames_queue = queue.Queue()
@@ -73,7 +72,6 @@ if __name__ == '__main__':
                 args.chunk_duration,
                 args.chunk_overlap,
                 chunk_queue,
-                camera_fps,
                 obj_detect_enabled,
                 obj_detect_path,
                 obj_detect_sample_rate,
