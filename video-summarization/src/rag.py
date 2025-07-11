@@ -71,7 +71,7 @@ class RAG:
         
         return docs
   
-    def display_results(self, docs):
+    def display_results(self, docs, save_video_clip=True, clip_length=5):
         if docs:
             for doc in docs:
                 print(f"Similarity Score: {doc[1] if isinstance(doc, tuple) else 'Not Applicable'}")  
@@ -90,7 +90,8 @@ class RAG:
             if frame_id < 0:
                 print("Search retrieved result based on the chunk summary (text). You may find the chunk video associated with this summary at the following path: ", chunk_path)
             else:
-                self._extract_clip(frame_id, chunk_path)
+                if save_video_clip:
+                    self._extract_clip(frame_id, chunk_path, clip_length)
 
         else:
             print("No results found for the provided query/filter expression.")
@@ -105,6 +106,9 @@ if __name__ == "__main__":
     parser.add_argument("--collection_name", type=str, default="video_chunks")
     parser.add_argument("--retrive_top_k", type=int, default=5)
     parser.add_argument("--filter_expression", type=str, nargs="?")
+    parser.add_argument("--save_video_clip", action="store_true", default=True)
+    parser.add_argument("--video_clip_duration", type=int, default=5)
+
     args = parser.parse_args()
     
     rag = RAG(milvus_uri=args.milvus_uri, 
@@ -117,4 +121,4 @@ if __name__ == "__main__":
             retrive_top_k=args.retrive_top_k, 
             filter_expression=args.filter_expression)
     
-    rag.display_results(docs)
+    rag.display_results(docs, args.save_video_clip, args.video_clip_duration)
