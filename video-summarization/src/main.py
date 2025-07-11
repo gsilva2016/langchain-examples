@@ -25,11 +25,11 @@ if __name__ == '__main__':
                         help="Maximum number of frames to be sampled per chunk for inference. Set to a smaller number if OOM.",
                         default=32)
     parser.add_argument("-c", "--chunk_duration", type=int,
-                        help="Maximum number of frames per video chunk (e.g., the default of 450 = 30s at 15fps).",
-                        default=450)
-    parser.add_argument("-v", "--chunk_overlap", type=int,
-                        help="Overlap in frames between chunks of input video (e.g., the default of 30 = 2s at 15fps).",
+                        help="Maximum length in seconds for each chunk of video.",
                         default=30)
+    parser.add_argument("-v", "--chunk_overlap", type=int,
+                        help="Overlap in seconds between chunks of input video.",
+                        default=2)
     parser.add_argument("-r", "--resolution", type=int, nargs=2,
                         help="Desired spatial resolution of input video if different than original. Width x Height")
 
