@@ -130,7 +130,7 @@ def query_vectors(expr: str, milvus_manager: object, collection_name: str = "chu
         print(f"Query Vectors: Request failed: {e}")
 
 def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queue, vlm_queue: queue.Queue,
-                       max_num_frames: int = 64, resolution: list = [], save_frame: bool = False):
+                       max_num_frames: int = 32, resolution: list = [], save_frame: bool = False):
     
     sampler = FrameSampler(max_num_frames=max_num_frames, resolution=resolution, save_frame=save_frame)
 
@@ -198,7 +198,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         if obj_detect_enabled:
             detected_objects = chunk["detected_objects"]
             
-            # Format detected objects for LLM input
+            # Format detected objects for VLM input
             detection_lines = []
             for d in detected_objects:
                 frame_num = d.get('frame')

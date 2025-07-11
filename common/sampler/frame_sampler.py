@@ -7,7 +7,7 @@ from decord import VideoReader, cpu
 class FrameSampler:
     def __init__(
         self,
-        max_num_frames: int = 64,
+        max_num_frames: int = 32,
         resolution: Optional[List[int]] = None,
         save_frame: bool = False,
         output_dir: Optional[str] = None
