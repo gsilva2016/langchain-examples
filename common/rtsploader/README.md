@@ -10,8 +10,8 @@ rtsp_loader = RTSPChunkLoader(
     rtsp_url="rtsp://<user>:<pass>@<camera-ip>", # Can also be a local video file path
     chunk_type="sliding_window", # Traditional sliding window with overlap
     chunk_args={
-        "window_size": 85, # Number of frames per chunk
-        "overlap": 15, # Number of frames of overlap between consecutive chunks
+        "window_size": 30, # Number of seconds per chunk
+        "overlap": 2, # Number of seconds of overlap between consecutive chunks
         "obj_detect_enabled": False,
     },
     output_dir='cam_1',
@@ -46,8 +46,8 @@ rtsp_loader = RTSPChunkLoader(
     rtsp_url="rtsp://<user>:<pass>@<camera-ip>", # Can also be a local video file path
     chunk_type="sliding_window", # Traditional sliding window with overlap
     chunk_args={
-        "window_size": 85, # Number of frames per chunk
-        "overlap": 15, # Number of frames of overlap between consecutive chunks
+        "window_size": 30, # Number of seconds per chunk
+        "overlap": 2, # Number of seconds of overlap between consecutive chunks
         "obj_detect_enabled": True,
         "dfine_path": 'ov_dfine/dfine-s-coco.xml', # Path to the D-FINE model
         "dfine_sample_rate": 5, # Every 5th frame is infernced upon

@@ -77,8 +77,8 @@ class MilvusManager:
                 {
                     "video_path": item["video_path"],
                     "chunk_id": item["chunk_id"],
-                    "start_time": float(item["start_time"]),
-                    "end_time": float(item["end_time"]),
+                    "start_time": item["start_time"],
+                    "end_time": item["end_time"],
                     "chunk_path": item["chunk_path"],
                     "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                     "frame_id": -1, # not required for text but required field for metadata since image needs it
@@ -112,8 +112,8 @@ class MilvusManager:
                     "video_path": chunk["video_path"],
                     "chunk_id": chunk["chunk_id"],
                     "frame_id": idx,
-                    "start_time": float(chunk["start_time"]),
-                    "end_time": float(chunk["start_time"]),
+                    "start_time": chunk["start_time"],
+                    "end_time": chunk["start_time"],
                     "chunk_path": chunk["chunk_path"],
                     "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                     "mode": "image",

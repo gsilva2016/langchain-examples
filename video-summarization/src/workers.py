@@ -2,16 +2,14 @@ from datetime import datetime
 import os
 import queue
 import time
-import uuid
 from dotenv import load_dotenv
 from langchain_summarymerge_score import SummaryMergeScoreTool
-from langchain_videochunk import VideoChunkLoader
-import numpy as np
+from common.rtsploader.rtsploader_wrapper import RTSPChunkLoader
+from common.sampler.frame_sampler import FrameSampler
+
 import requests
 from PIL import Image
 import time
-from decord import VideoReader, cpu
-from openvino import Tensor
 from common.milvus.milvus_wrapper import MilvusManager
 import io
 import base64
@@ -131,23 +129,12 @@ def query_vectors(expr: str, milvus_manager: object, collection_name: str = "chu
     except Exception as e:
         print(f"Query Vectors: Request failed: {e}")
 
-def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queue, vlm_queue: queue.Queue, max_num_frames: int = 64, resolution: list = [], save_frame: bool = False):
-    # To be replaced with module from common/sampler for example    
-    def uniform_sample(l: list, n: int) -> list:
-                gap = len(l) / n
-                idxs = [int(i * gap + gap / 2) for i in range(n)]
-                return [l[i] for i in idxs]
+def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queue, vlm_queue: queue.Queue,
+                       max_num_frames: int = 32, resolution: list = [], save_frame: bool = False):
     
-    def save_frames(frames: np.ndarray, frame_idx: list, video_path: str):
-        os.makedirs(f"{video_path}", exist_ok=True)
-        
-        # Save the sampled frames as images
-        for i, idx in enumerate(frame_idx):
-            img = Image.fromarray(frames[i])
-            img.save(f"{video_path}/frame_{idx}.jpg")
-                
+    sampler = FrameSampler(max_num_frames=max_num_frames, resolution=resolution, save_frame=save_frame)
+
     while True:
-        # if not input_queue.empty():
         try:
             chunk = chunk_queue.get(timeout=1)
         except queue.Empty:
@@ -156,60 +143,45 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
         if chunk is None:
             break
         
+        # Sample frames from the video chunk
+        print(f"SAMPLER: Sampling frames {max_num_frames} from chunk: {chunk['chunk_id']}")
         video_path = chunk["chunk_path"]
-        src_video_path = chunk["video_path"]
-
-        if len(resolution) != 0:
-            vr = VideoReader(video_path, width=resolution[0],
-                            height=resolution[1], ctx=cpu(0))
-        else:
-            vr = VideoReader(video_path, ctx=cpu(0))
-
-        frame_idx = [i for i in range(0, len(vr), max(1, int(len(vr) / max_num_frames)))]
-        if len(frame_idx) > max_num_frames:
-            frame_idx = uniform_sample(frame_idx, max_num_frames)
-        frames = vr.get_batch(frame_idx).asnumpy()
+        try:
+            frames_dict = sampler.sample_frames_from_video(video_path, chunk["detected_objects"])
+        except Exception as e:
+            print(f"SAMPLER: sampling failed: {e}")
         
-        name = os.path.basename(video_path) + os.path.basename(src_video_path)
-        
-        if save_frame:
-            save_frames(frames, frame_idx, name)
-
-        # frames = [Tensor(v.astype('uint8')) for v in frames]
-        print(f"Sampling frames from chunk: {chunk['chunk_id']} and Num frames sampled: {frames.shape[0]}")
         sampled = {
             "video_path": chunk["video_path"],
             "chunk_id": chunk["chunk_id"],
-            "frames": frames,
-            "frame_ids": frame_idx,
+            "frames": frames_dict["frames"],
+            "frame_ids": frames_dict["frame_ids"],
             "chunk_path": chunk["chunk_path"],
             "start_time": chunk["start_time"],
-            "end_time": chunk["end_time"]
+            "end_time": chunk["end_time"],
         }
-        vlm_queue.put(sampled)
-        milvus_frames_queue.put(sampled)
+        vlm_queue.put({**sampled, "detected_objects": frames_dict["detected_objects"]})
+        milvus_frames_queue.put({**sampled, "detected_objects": chunk["detected_objects"]})
         
-    print("Sampling completed")
+    print("SAMPLER: Sampling completed")
     vlm_queue.put(None)
     milvus_frames_queue.put(None)
 
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
-                             prompt: str, max_new_tokens: int):
+                             prompt: str, max_new_tokens: int, obj_detect_enabled: bool):
     
     while True:        
         try:
             chunk = vlm_q.get(timeout=1)
-
             if chunk is None:
                 break
 
         except queue.Empty:
-            print("VLM: No chunks available for summary generation")
             continue
-
         print(f"VLM: Generating chunk summary for chunk {chunk['chunk_id']}")
-
-        content = [{"type": "text", "text": prompt}]
+        
+        # Prepare the frames for the VLM request
+        content = []
         for frame in chunk["frames"]:
             img = Image.fromarray(frame)
             buffer = io.BytesIO()
@@ -219,7 +191,35 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                             "type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}
                             })
+        
+        # Add the object detection metadata to the VLM request
+        if obj_detect_enabled:
+            detected_objects = chunk["detected_objects"]
+            
+            # Format detected objects for VLM input
+            detection_lines = []
+            for d in detected_objects:
+                frame_num = d.get('frame')
+                objs = d.get('objects', [])
+                if objs:
+                    obj_descriptions = []
+                    for obj in objs:
+                        label = obj.get('label')
+                        bbox = obj.get('bbox')
+                        bbox_str = f"[{', '.join([f'{v:.2f}' for v in bbox])}]" if bbox else "[]"
+                        obj_descriptions.append(f"{label} at {bbox_str}")
+                    detection_lines.append(f"Frame {frame_num}: " + "; ".join(obj_descriptions))
+            detection_text = (
+                "Detected objects per frame:\n" +
+                "\n".join(detection_lines) +
+                "\nPlease use this information in your analysis."
+            )
+            content.append({"type": "text", "text": detection_text})
+            
+        # Prepare the text prompt content for the VLM request
+        content.append({"type": "text", "text": prompt})
 
+        # Package all request data for the VLM
         data = {
             "model": VLM_MODEL,
             "max_tokens": max_new_tokens,
@@ -237,6 +237,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             ]
         }
 
+        # Send the request to the VLM model endpoint
         response = requests.post(OVMS_ENDPOINT, 
                                  json=data, 
                                  headers={"Content-Type": "application/json"})
@@ -244,9 +245,9 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         if response.status_code == 200:
             output_json = response.json()
             output_text = output_json["choices"][0]["message"]["content"]
-            print("Response JSON:", output_json)
+            print("VLM: Model response:", output_json)
         else:
-            print("Error:", response.status_code, response.text)
+            print("VLM: Error:", response.status_code, response.text)
             continue
         
         chunk_summary = {
@@ -265,26 +266,44 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
     milvus_summaries_queue.put(None)
     merger_queue.put(None)
         
-def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue, chunking_mechanism: str = "sliding_window"):
-    loader = VideoChunkLoader(
-        video_path=video_path,
-        chunking_mechanism=chunking_mechanism,
-        chunk_duration=chunk_duration,
-        chunk_overlap=chunk_overlap)
+def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue,
+                    obj_detect_enabled: bool, obj_detect_path: str, obj_detect_sample_rate: int, 
+                    obj_detect_threshold: float, chunking_mechanism: str = "sliding_window"):
+
+    # Initialize the video chunk loader
+    chunk_args = {
+        "window_size": chunk_duration,
+        "overlap": chunk_overlap,
+    }
+    if obj_detect_enabled:
+        chunk_args.update({
+            "obj_detect_enabled": obj_detect_enabled,
+            "dfine_path": obj_detect_path,
+            "dfine_sample_rate": obj_detect_sample_rate,
+            "detection_threshold": obj_detect_threshold
+        })
+
+    loader = RTSPChunkLoader(
+        rtsp_url=video_path,
+        chunk_type=chunking_mechanism,
+        chunk_args=chunk_args,
+    )
     
+    # Generate chunks
     for doc in loader.lazy_load():
-        print(f"Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
+        print(f"CHUNK LOADER: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
         chunk = {
             "video_path": doc.metadata['source'],
-            "chunk_id": f"{uuid.uuid4()}_{doc.metadata['chunk_id']}",
+            "chunk_id": doc.metadata['chunk_id'],
             "chunk_path": doc.metadata['chunk_path'],
             "chunk_metadata": doc.page_content,
             "start_time": doc.metadata['start_time'],
             "end_time": doc.metadata['end_time'],
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }            
+            "detected_objects": doc.metadata["detected_objects"]
+        }
         chunk_queue.put(chunk)
-    print(f"Chunk generation completed for {video_path}")
+    print(f"CHUNK LOADER: Chunk generation completed for {video_path}")
     
 def call_vertex():
     pass

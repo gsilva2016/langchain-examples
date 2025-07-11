@@ -40,7 +40,6 @@ class RTSPChunkLoader(BaseLoader):
         self.overlap =  chunk_args['overlap']
         self.obj_detect_enabled = chunk_args.get("obj_detect_enabled", False)
         self.frame_id = 0
-        self.frame_buffer = deque(maxlen=self.window_size + self.overlap) # Use a deque for effeciency
         self.chunk_queue = queue.Queue() # Use thread safe queue for writing frames
         self.stop_event = threading.Event()
         self.consumer_thread = threading.Thread(target=self._consume_chunks, daemon=True) # Start consumer thread for background buffer writing
@@ -212,9 +211,12 @@ class RTSPChunkLoader(BaseLoader):
             print("[ERROR] FFMPEG backend is not available, please ensure FFMPEG is installed and accessible.")
             return
 
-        # Get fps from video/stream
+        # Get fps from video/stream and convert properties from seconds to frames
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-
+        self.window_size = int(self.window_size * self.fps)
+        self.overlap = int(self.overlap * self.fps)
+        self.frame_buffer = deque(maxlen=self.window_size + self.overlap) # Use a deque for effeciency
+        
         # Check if video is file in order to add proper frame delay for object detection
         if self.is_file:
             print(f"[INFO] Processing local video file: {self.rtsp_url}")
