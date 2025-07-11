@@ -179,11 +179,9 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         except queue.Empty:
             continue
         print(f"VLM: Generating chunk summary for chunk {chunk['chunk_id']}")
-
-        # Prepare the text prompt content for the VLM request
-        content = [{"type": "text", "text": prompt}]
         
         # Prepare the frames for the VLM request
+        content = []
         for frame in chunk["frames"]:
             img = Image.fromarray(frame)
             buffer = io.BytesIO()
@@ -216,7 +214,10 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                 "\n".join(detection_lines) +
                 "\nPlease use this information in your analysis."
             )
-            content.append({"type": "text", "text": detection_text}) 
+            content.append({"type": "text", "text": detection_text})
+            
+        # Prepare the text prompt content for the VLM request
+        content.append({"type": "text", "text": prompt})
 
         # Package all request data for the VLM
         data = {
