@@ -104,9 +104,9 @@ if __name__ == "__main__":
     parser.add_argument("--milvus_port", type=int, default=19530)
     parser.add_argument("--milvus_dbname", type=str, default="milvus_db")
     parser.add_argument("--collection_name", type=str, default="video_chunks")
-    parser.add_argument("--retrive_top_k", type=int, default=5)
+    parser.add_argument("--retrieve_top_k", type=int, default=5)
     parser.add_argument("--filter_expression", type=str, nargs="?")
-    parser.add_argument("--save_video_clip", action="store_true", default=True)
+    parser.add_argument("--save_video_clip", type=bool, default=True)
     parser.add_argument("--video_clip_duration", type=int, default=5)
 
     args = parser.parse_args()
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     
     docs = rag.run(query_text=args.query_text,
             query_img=args.query_img, 
-            retrive_top_k=args.retrive_top_k, 
+            retrive_top_k=args.retrieve_top_k, 
             filter_expression=args.filter_expression)
     
     rag.display_results(docs, args.save_video_clip, args.video_clip_duration)

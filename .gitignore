@@ -19,7 +19,7 @@ sk*
 *.mp4
 *.avi
 export_model.py
-models/
+models*/
 ovms/
 *.tar.gz
 yolo*

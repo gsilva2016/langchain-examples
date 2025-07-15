@@ -190,10 +190,11 @@ class RTSPChunkLoader(BaseLoader):
                         })
 
                 with self.detection_lock:
-                    self.detection_results[frame_id] = {
-                        "frame_id": frame_id,
-                        "objects": objects
-                    }
+                    if objects:
+                        self.detection_results[frame_id] = {
+                            "frame_id": frame_id,
+                            "objects": objects
+                        }
 
             except Exception as e:
                 print(f"[D-FINE OV ERROR] Inference failed: {e}")

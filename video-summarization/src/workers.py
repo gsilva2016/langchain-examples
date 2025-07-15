@@ -195,13 +195,13 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             # Format detected objects for VLM input
             detection_lines = []
             for d in detected_objects:
-                frame_num = d.get('frame')
-                objs = d.get('objects', [])
+                frame_num = d.get("frame")
+                objs = d.get("objects", [])
                 if objs:
                     obj_descriptions = []
                     for obj in objs:
-                        label = obj.get('label')
-                        bbox = obj.get('bbox')
+                        label = obj.get("label")
+                        bbox = obj.get("bbox")
                         bbox_str = f"[{', '.join([f'{v:.2f}' for v in bbox])}]" if bbox else "[]"
                         obj_descriptions.append(f"{label} at {bbox_str}")
                     detection_lines.append(f"Frame {frame_num}: " + "; ".join(obj_descriptions))
@@ -253,6 +253,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             "start_time": chunk["start_time"],
             "end_time": chunk["end_time"],
             "chunk_summary": output_text,
+            "detected_objects": chunk["detected_objects"]
         }
         
         milvus_summaries_queue.put(chunk_summary)
@@ -289,16 +290,17 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
     for doc in loader.lazy_load():
         print(f"CHUNK LOADER: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
         chunk = {
-            "video_path": doc.metadata['source'],
-            "chunk_id": doc.metadata['chunk_id'],
-            "chunk_path": doc.metadata['chunk_path'],
+            "video_path": doc.metadata["source"],
+            "chunk_id": doc.metadata["chunk_id"],
+            "chunk_path": doc.metadata["chunk_path"],
             "chunk_metadata": doc.page_content,
-            "start_time": doc.metadata['start_time'],
-            "end_time": doc.metadata['end_time'],
+            "start_time": doc.metadata["start_time"],
+            "end_time": doc.metadata["end_time"],
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "detected_objects": doc.metadata["detected_objects"]
         }
         chunk_queue.put(chunk)
+        
     print(f"CHUNK LOADER: Chunk generation completed for {video_path}")
     
 def call_vertex():

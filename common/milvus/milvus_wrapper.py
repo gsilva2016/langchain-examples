@@ -77,11 +77,7 @@ class MilvusManager:
             # Getting all objects associated with each chunk
             objects = []
             for item in data:
-                uniq = set()
-                for i in item["detected_objects"]:
-                    for obj in i.get("objects", []):
-                        uniq.add(obj)
-                objects.append(uniq)
+                objects.append(item["detected_objects"])
 
             metadatas = [
                 {
@@ -93,7 +89,7 @@ class MilvusManager:
                     "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                     "frame_id": -1, # not required for text but required field for metadata since image needs it
                     "mode": "text",
-                    "detected_objects": str(list(objects[idx]))
+                    "detected_objects": str(objects[idx])
                 }
                 for idx, item in enumerate(data)
             ]
