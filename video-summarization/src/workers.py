@@ -1,7 +1,6 @@
 from datetime import datetime
 import os
 import queue
-import time
 from dotenv import load_dotenv
 from langchain_summarymerge_score import SummaryMergeScoreTool
 from common.rtsploader.rtsploader_wrapper import RTSPChunkLoader
@@ -9,8 +8,6 @@ from common.sampler.frame_sampler import FrameSampler
 
 import requests
 from PIL import Image
-import time
-from common.milvus.milvus_wrapper import MilvusManager
 import io
 import base64
 
@@ -19,51 +16,47 @@ OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
 
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
-    summary_merger = SummaryMergeScoreTool(
-                    api_base=OVMS_ENDPOINT,
-                )
+    summary_merger = SummaryMergeScoreTool(api_base=OVMS_ENDPOINT)
+
+    summaries = []
+    last = False
+
     while True:
-        chunk_summaries = []
-        while len(chunk_summaries) < n:
-            chunk = summary_q.get()  
-            # exit the thread if None is received and wait for all current summaries to be processed
+        while len(summaries) < n and not last:
+            chunk = summary_q.get()
             if chunk is None:
-                if chunk_summaries:
-                    summary_q.put(None)  
-                    break
-                else:
-                    return
-            chunk_summaries.append(chunk)
-        
-        # get atleast n summaries to process, if there are more - process them all
-        # MergeTool will handle them in batches 
+                last = True
+                break
+            summaries.append(chunk)
+
         while True:
             try:
                 chunk = summary_q.get_nowait()
                 if chunk is None:
-                    if chunk_summaries:
-                        summary_q.put(None)
-                        break
-                    else:
-                        return
-                chunk_summaries.append(chunk)
+                    last = True
+                    break
+                summaries.append(chunk)
             except queue.Empty:
                 break
 
-        if chunk_summaries:
-            print(f"Summary Merger: Received {len(chunk_summaries)} chunk summaries for merging")
+        if len(summaries) >= n or (last and summaries):
+            print(f"Summary Merger: Received {len(summaries)} chunk summaries for merging")
             formatted_req = {
-                "summaries": {chunk["chunk_id"]: chunk["chunk_summary"] for chunk in chunk_summaries}
+                "summaries": {chunk["chunk_id"]: chunk["chunk_summary"] for chunk in summaries}
             }
-            print(f"Summary Merger: Sending {len(chunk_summaries)} chunk summaries for merging")
+            print(f"Summary Merger: Sending {len(summaries)} chunk summaries for merging")
             try:
                 merge_res = summary_merger.invoke(formatted_req)
                 print(f"Overall Summary: {merge_res['overall_summary']}")
                 print(f"Anomaly Score: {merge_res['anomaly_score']}")
             except Exception as e:
                 print(f"Summary Merger: Request failed: {e}")
-        else:
-            print("Summary Merger: Waiting for chunk summaries to merge")
+
+            summaries = []
+
+        if last and not summaries:
+            print("Summary Merger: All summaries processed, exiting.")
+            return
     
 def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: object):    
     while True:        
@@ -86,29 +79,32 @@ def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: object):
         except Exception as e:
             print(f"Milvus: Frame Ingestion Request failed: {e}")
 
-def ingest_summaries_into_milvus(ingest_q: queue.Queue, milvus_manager: object):
-    while True:
-        chunk_summaries = []
-        
-        try:
-            chunk = ingest_q.get(timeout=1)
-            chunk_summaries.append(chunk)
-            
-            if chunk is None:
-                break
-            
-        except queue.Empty as e:
-            continue
-        
-        print(f"Milvus: Ingesting {len(chunk_summaries)} chunk summaries into Milvus")
-        try:
-            response = milvus_manager.embed_txt_and_store(chunk_summaries)
-            print(f"Milvus: Chunk Summaries Ingested into Milvus: {response['status']}, Total chunks: {response['total_chunks']}")
-    
-        except Exception as e:
-            print(f"Milvus: Chunk Summaries Ingestion Request failed: {e}")
+def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager: object):
+    summaries = []
+    last = False
 
-        time.sleep(25)
+    while True:
+        try:
+            chunk = milvus_summaries_q.get(timeout=1)
+            if chunk is None:
+                last = True
+            else:
+                summaries.append(chunk)
+        except queue.Empty:
+            pass  
+
+        if summaries and (last or milvus_summaries_q.empty()):
+            print(f"Milvus: Ingesting {len(summaries)} chunk summaries into Milvus")
+            try:
+                response = milvus_manager.embed_txt_and_store(summaries)
+                print(f"Milvus: Chunk Summaries Ingested into Milvus: {response['status']}, Total chunks: {response['total_chunks']}")
+            except Exception as e:
+                print(f"Milvus: Chunk Summaries Ingestion Request failed: {e}")
+            summaries = []  
+
+        if last and not summaries:
+            print("Milvus: All summaries ingested, exiting.")
+            break
 
 def search_in_milvus(query_text: str, milvus_manager: object):
     try:

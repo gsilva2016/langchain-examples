@@ -22,7 +22,8 @@ if [ "$1" == "--skip" ] || [ "$2" == "--skip" ]; then
 	echo "Skipping sample video download"
 else
     # Download sample video
-    wget https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4
+    #wget https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4
+    echo "pass"
 fi
 
 PROJECT_ROOT_DIR=..
