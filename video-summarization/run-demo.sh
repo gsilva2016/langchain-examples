@@ -18,7 +18,7 @@ fi
 
 huggingface-cli login --token $HUGGINGFACE_TOKEN
 
-if [ "$1" == "--skip" ]; then
+if [ "$1" == "--skip" ] || [ "$2" == "--skip" ]; then
 	echo "Skipping sample video download"
 else
     # Download sample video
@@ -39,15 +39,19 @@ if ! docker ps | grep -q "milvus"; then
     fi
 fi
 
-if [ "$1" == "--run_rag" ]; then
+if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then
+    echo "----------------------*NOTE*: Please run RAG searches on input videos you have already run video-summarization on"----------------------"
+
     echo "Running RAG"
     
-    if [ -z "$QUERY_TEXT" ]; then
-    echo "Please set the QUERY_TEXT if you are running --run_rag."
+    if [ -z "$QUERY_TEXT" ] && [ -z "$FILTER_EXPR" ]; then
+    echo "Please set the QUERY_TEXT or FILTER_EXPR if you are running --run_rag."
     exit 1
     fi
-    PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/rag.py --query_text "$QUERY_TEXT" --filter_expression "$FILTER_EXPR"
-    
+    PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/rag.py --query_text "$QUERY_TEXT" --filter_expression "$FILTER_EXPR" \
+    --query_img "$QUERY_IMG" --milvus_uri "$MILVUS_HOST" --milvus_port "$MILVUS_PORT" --milvus_dbname "$MILVUS_DBNAME" \
+    --collection_name "$COLLECTION_NAME" --retrieve_top_k "$RETRIEVE_TOP_K" --save_video_clip "$SAVE_VIDEO_CLIP" --video_clip_duration "$VIDEO_CLIP_DURATION"
+
     echo "RAG completed"
 
 else

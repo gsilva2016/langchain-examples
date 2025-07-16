@@ -36,7 +36,7 @@ LLAMA_MODEL="meta-llama/Llama-3.2-3B-Instruct"
 SUMMARY_MERGER_LLM_DEVICE="GPU"
 
 # Prompt for merging multiple chunk summaries into one summary
-SUMMARY_PROMPT=<default prompt included in the file>
+SUMMARY_PROMPT=<prompt included in the .env>
 
 ####### Embedding model configuration
 # Currently verified model
@@ -76,15 +76,44 @@ Here is a detailed description of the video.
 1) Here is a bullet point list of suspicious behavior (if any) to highlight.
 '
 
+####### Parameters for Milvus
+
+MILVUS_HOST="localhost"
+MILVUS_PORT=19530
+MILVUS_DBNAME="milvus_db"
+COLLECTION_NAME="video_chunks"
+
 ####### Parameters for summarization with --run_rag option
 
 # Query text to search for in the Vector DB
 # Example: "woman shoplifting"
 QUERY_TEXT=
+# Query image to search for in the Vector DB (path to the image file)
+QUERY_IMG=
 
 # Optional Filter expression for the Vector DB query
-# Example: To search only text summaries: "mode=='text'". To search only frames: "mode=='frame'"
+# Filters can be used to narrow down the search results based on specific criteria.
+# The filter expression can include:
+# - mode: 'text' or 'image' (whether to search using the text summary embeddings or frame embeddings)
+# - video_path: path to the video file. Search will be limited to chunks from this video.
+# - chunk_path: path to the chunk file. Search will be limited to specific chunk file.
+# - detected_objects: list of objects detected in the chunk, e.g., 'person', 'car', 'bag', etc. An example is provided below. 
+
+# Examples of various types of `FILTER_EXPR` is provided below. Various supported operators can be referred to in Milvus' documentation - https://milvus.io/docs/boolean.md 
+# Example: To search only text summaries: "mode=='text'". To search only frames: "mode=='image'"
+# Example: To search for specific detected objects: "detected_objects LIKE '%<object name>%'"
+# Example: To search on a specific video: "video_path=='<path to video>'"
+# Example: Combine multiple filters using operator "and": "mode=='image' and video_path==<path to video> and detected_objects LIKE '%person%'"
+
+### Example: FILTER_EXPR="mode=='image' and detected_objects LIKE '%person%'". Search includes only image embeddings with detected objects that contain 'person'.
 FILTER_EXPR=
+
+# Save a video clip of Milvus search result
+SAVE_VIDEO_CLIP=True
+# Duration of the video clip in seconds
+VIDEO_CLIP_DURATION=5
+# Number of top results to retrieve from Milvus
+RETRIEVE_TOP_K=2
 
 ```
 
@@ -101,7 +130,7 @@ command can be used to skip the re-install of dependencies.
 ./install.sh --skip
 ```
 
-## Convert and Save Optimized MiniCPM-V-2_6
+## Convert and Save Optimized MiniCPM-V-2_6 VLM and Llama-3.2-3B LLM
 
 This section can be skipped if you ran `install.sh` the first time. The `install.sh` script runs this command as part of 
 its setup. This section is to give the user flexibility to tweak the `export_model.py` command for certain model parameters to run on OVMS.
@@ -133,6 +162,14 @@ OR
 python export_model.py text_generation --source_model meta-llama/Llama-3.2-3B-Instruct --config_file_path models/config.json --model_repository_path models --target_device NPU --max_prompt_len 1500 --pipeline_type LM --overwrite_models
 ```
 
+## Model Server
+
+Pipeline uses [OVMS (OpenVINO Model Server)](https://github.com/openvinotoolkit/model_server) for serving the VLM and LLM.
+
+## Embedding Model
+
+This pipeline uses BLIP for creating embeddings out of text and images. The subsequent vectors are stored in MIlvus DB. Model details are present in the configuration file `.env`.
+
 ## Run Video Summarization
 
 Summarize [this sample video](https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4)
@@ -151,7 +188,21 @@ Note: if the demo has already been run, you can use the following command to ski
 
 Run RAG on the images and summaries you have ingested in the vector DB.
 
-Open `run_demo.sh` and enter the QUERY_TEXT in `QUERY_TEXT=` and `FILTER_EXPR`(optional) variable. Then run the script.
+*Note*: Currently RAG and video-summarization run as separate processes. Please run RAG searches on input videos you have already run video-summarization on. 
+
+3 types of RAG searches are possible currently:
+
+1. Text based similarity search
+Open `run_demo.sh` and enter the QUERY_TEXT in `QUERY_TEXT=` and `FILTER_EXPR`(optional) variable. 
+
+2. Image based similarity search
+Open `run_demo.sh` and enter the QUERY_IMG (path to image) in `QUERY_TEXT=` and `FILTER_EXPR`(optional) variable. 
+
+3. Query based on certain filter expressions (no text or image)
+Open `run_demo.sh` and enter the `FILTER_EXPR` variable. Then run the script.
+
+Examples of various types of `FILTER_EXPR` that can be created is annotated in `run_demo.sh`. Various suported operators can be referred to in Milvus' documentation [here](https://milvus.io/docs/boolean.md) 
+
 ```
 ./run_demo.sh --run_rag
 ```

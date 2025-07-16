@@ -2,7 +2,6 @@ import argparse
 import os
 import queue
 from concurrent.futures.thread import ThreadPoolExecutor
-import time
 from dotenv import load_dotenv
 
 from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus, generate_chunks
@@ -84,24 +83,28 @@ if __name__ == '__main__':
                                     resolution=args.resolution)
         
         print("Main: Starting frame ingestion into Milvus")
-        milvus_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
+        milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
         
         print("Main: Starting chunk summary generation")
         cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled)
 
         print("Main: Starting chunk summary ingestion into Milvus")
-        milvus_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
+        milvus_summaries_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
         
         # Summarize the full video, using the subsections summaries from each chunk
         # Post an HTTP request to OVMS for summary merger (shown below)
         print("Main: Starting chunk summary merger")
         merge_future = pool.submit(send_summary_request, merger_queue)
     
-        while not all([future.done() for future in futures]):
-            time.sleep(0.1)
-        
+        for future in futures:
+            future.result()
+
         chunk_queue.put(None)
         
+        sample_future.result()
+        milvus_frames_future.result()
+        cs_future.result()
+        milvus_summaries_future.result()
         merge_future.result()
+
         print("Main: All tasks completed")
-        print("Main: Lastly, waiting for merge task to complete")
