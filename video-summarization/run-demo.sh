@@ -40,6 +40,8 @@ if ! docker ps | grep -q "milvus"; then
 fi
 
 if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then
+    echo "----------------------*NOTE*: Please run RAG searches on input videos you have already run video-summarization on"----------------------"
+
     echo "Running RAG"
     
     if [ -z "$QUERY_TEXT" ] && [ -z "$FILTER_EXPR" ]; then
