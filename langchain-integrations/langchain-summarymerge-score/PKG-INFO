@@ -1,6 +1,6 @@
 Metadata-Version: 2.3
 Name: langchain-summarymerge-score
-Version: 0.2.0
+Version: 0.2.1
 Summary: An integration package connecting SummaryMergeScore and LangChain
 License: MIT
 Requires-Python: >=3.9,<4.0

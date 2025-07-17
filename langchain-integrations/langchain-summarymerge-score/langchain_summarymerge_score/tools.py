@@ -272,7 +272,7 @@ class SummaryMergeScoreTool(BaseTool):  # type: ignore[override]
     def extract_anomaly_score(summary):
         # matching based on multiple scenarios observed; goal is to match floating point or integer after Anomaly Score
         # Anomaly Score sometimes is encapsulated within ** and sometimes LLM omits
-        match = re.search(r"Anomaly Score:?\s*(-?\d+(\.\d+)?)", summary, re.DOTALL)
+        match = re.search(r".*?Anomaly Score.*?:.*?(-?\d+(\.\d+)?)", summary, re.DOTALL)
         if match:
             return float(match.group(1)) if match.group(1) else 0.0
         return 0.0
