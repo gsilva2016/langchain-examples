@@ -92,11 +92,21 @@ QUERY_TEXT=
 QUERY_IMG=
 
 # Optional Filter expression for the Vector DB query
+# Filters can be used to narrow down the search results based on specific criteria.
+# The filter expression can include:
+# - mode: 'text' or 'image' (whether to search using the text summary embeddings or frame embeddings)
+# - video_path: path to the video file. Search will be limited to chunks from this video.
+# - chunk_path: path to the chunk file. Search will be limited to specific chunk file.
+# - detected_objects: list of objects detected in the chunk, e.g., 'person', 'car', 'bag', etc. An example is provided below. 
+
+# Examples of various types of `FILTER_EXPR` is provided below. Various supported operators can be referred to in Milvus' documentation - https://milvus.io/docs/boolean.md 
 # Example: To search only text summaries: "mode=='text'". To search only frames: "mode=='image'"
 # Example: To search for specific detected objects: "detected_objects LIKE '%<object name>%'"
 # Example: To search on a specific video: "video_path=='<path to video>'"
-# Example: Combine multiple filters using operator and: "mode=='image' and chunk_id==<some id>"
-FILTER_EXPR="mode=='image' and detected_objects LIKE '%person%'"
+# Example: Combine multiple filters using operator "and": "mode=='image' and video_path==<path to video> and detected_objects LIKE '%person%'"
+
+### Example: FILTER_EXPR="mode=='image' and detected_objects LIKE '%person%'". Search includes only image embeddings with detected objects that contain 'person'.
+FILTER_EXPR=
 
 # Save a video clip of Milvus search result
 SAVE_VIDEO_CLIP=True
