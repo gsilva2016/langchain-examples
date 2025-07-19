@@ -13,6 +13,19 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+if [ "$LLAMA_MODEL" == "meta-llama/Llama-3.2-3B-Instruct" ]; then
+    echo "Normalizing LLAMA_MODEL to 'llama'..."
+
+    jq '(.mediapipe_config_list[] | select(.name == "meta-llama/Llama-3.2-3B-Instruct") | .name) |= "llama"' models/config.json > models/config_tmp.json && mv models/config_tmp.json models/config.json
+
+    # Update .env 
+    if grep -q '^LLAMA_MODEL=' .env; then
+		sed -i 's/^LLAMA_MODEL=.*/LLAMA_MODEL=llama/' .env
+	else
+		echo 'LLAMA_MODEL=llama' >> .env
+	fi
+fi
+
 # Read OVMS endpoint and port from .env
 if [ -z "$OVMS_ENDPOINT" ]; then
     echo "OVMS_ENDPOINT is not set. Please set it in the .env file."

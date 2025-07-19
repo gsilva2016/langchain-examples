@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from langchain_summarymerge_score import SummaryMergeScoreTool
 from common.rtsploader.rtsploader_wrapper import RTSPChunkLoader
 from common.sampler.frame_sampler import FrameSampler
+from common.agents.video_agents import run_video_recaption_agent
 
 import requests
 from PIL import Image
@@ -13,11 +14,82 @@ import time
 from common.milvus.milvus_wrapper import MilvusManager
 import io
 import base64
+import subprocess
+import asyncio
+import json
 
 load_dotenv()
 OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
 
+def delete_file_if_exists(path):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"Removed {path}")
+        else:
+            print(f"{path} not found")
+    except Exception as e:
+        print(f"Error in removing file {path}")
+
+
+def concatenate_videos(video_path, output_path='merged_video.mp4', list_file='merge_videos.txt'):
+    with open(list_file, "w") as f:
+        for path in video_path:
+            f.write(f"file '{path}'\n")
+
+    cmd = [
+        "ffmpeg",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", list_file,
+        "-c", "copy",
+        output_path
+    ]
+
+    try:
+        subprocess.run(cmd, check=True)
+        print(f"Successfully created {output_path}")
+        return output_path
+    except subprocess.CalledProcessError as e:
+        print("Error during video concatenation")
+        return None
+
+def call_vertex(chunk_summaries, merge_res):    
+    start_time = chunk_summaries[0]["start_time"]
+    end_time = chunk_summaries[-1]["end_time"]
+    chunk_paths = [chunk["chunk_path"] for chunk in chunk_summaries]
+    merged_video_path = concatenate_videos(chunk_paths, output_path=f'merged_video_{start_time}_to_{end_time}.mp4')   
+    
+    # Call the agentic workflow
+    review_decision, vlm_result = asyncio.run(run_video_recaption_agent(merge_res['overall_summary'], merge_res['anomaly_score'], merged_video_path))
+    print("agent output: \n", review_decision, vlm_result)
+    
+    
+    delete_file_if_exists(merged_video_path)
+    # Handle agentic outputs
+    if review_decision:
+        try:
+            review_decision_json = json.loads(review_decision)
+        except Exception:
+            review_decision_json = {}
+    
+        if review_decision_json.get("review_required"):
+            print("Agent requested VLM review.")
+            print("VLM Review Output:", vlm_result)
+            #update merge_res with new results
+            if vlm_result:
+                try:
+                    result = json.loads(vlm_result)
+                    overall_summary = result.get("overall_summary", "")
+                    potential_suspicious_activity = result.get("potential_suspicious_activity", "")
+                    anomaly_score = result.get("anomaly_score", 0.0)
+                    merge_res['overall_summary'] = overall_summary
+                    merge_res['anomaly_score'] = anomaly_score
+                    print(f"[ 🤖  CLOUD AGENT SUMMARY \n {merge_res['overall_summary']} \n\nPotential Suspicious Activity: \n {potential_suspicious_activity}\n\nAnomaly score from Gemini Agent: \n {merge_res['anomaly_score']}\n\n")
+                except Exception as e:
+                    print(f"Cloud caption Error: {e}")
+                    
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
     summary_merger = SummaryMergeScoreTool(
                     api_base=OVMS_ENDPOINT,
@@ -60,6 +132,9 @@ def send_summary_request(summary_q: queue.Queue, n: int = 3):
                 merge_res = summary_merger.invoke(formatted_req)
                 print(f"Overall Summary: {merge_res['overall_summary']}")
                 print(f"Anomaly Score: {merge_res['anomaly_score']}")
+                print(" Agent processing started \n")
+                call_vertex(chunk_summaries, merge_res)
+                            
             except Exception as e:
                 print(f"Summary Merger: Request failed: {e}")
         else:
@@ -305,5 +380,3 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
         chunk_queue.put(chunk)
     print(f"CHUNK LOADER: Chunk generation completed for {video_path}")
     
-def call_vertex():
-    pass
