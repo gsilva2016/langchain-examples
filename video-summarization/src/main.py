@@ -39,7 +39,6 @@ if __name__ == '__main__':
 
     # Load environment variables
     load_dotenv()
-    chunking_mechanism = os.getenv("CHUNKING_MECHANISM", "sliding_window")
     obj_detect_enabled = os.getenv("OBJ_DETECT_ENABLED", "TRUE").upper() == "TRUE"
     obj_detect_model_path = os.getenv("OBJ_DETECT_MODEL_PATH", "ov_dfine/dfine-s-coco.xml")
     obj_detect_sample_rate = int(os.getenv("OBJ_DETECT_SAMPLE_RATE", 5))
@@ -74,8 +73,7 @@ if __name__ == '__main__':
                 obj_detect_enabled,
                 obj_detect_model_path,
                 obj_detect_sample_rate,
-                obj_detect_threshold,
-                chunking_mechanism
+                obj_detect_threshold
             ))
  
         print("Main: Getting sampled frames")    

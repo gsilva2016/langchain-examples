@@ -28,10 +28,9 @@ COCO_CLASSES = [
 ]
 
 class RTSPChunkLoader(BaseLoader):
-    def __init__(self, rtsp_url: str, chunk_type: str, chunk_args: Dict, output_dir: str = "output_chunks"):
+    def __init__(self, rtsp_url: str, chunk_args: Dict, output_dir: str = "output_chunks"):
         self.rtsp_url = rtsp_url
         self.is_file = os.path.isfile(rtsp_url)
-        self.chunk_type = chunk_type
         self.output_dir = output_dir
         self.cap = None
         self.buffer_start_time = None
@@ -91,20 +90,21 @@ class RTSPChunkLoader(BaseLoader):
             except Exception as e:
                 print(f"[ERROR] Consumer failed: {e}")
 
-    def _sliding_window_chunk(self, frame, current_time) -> Tuple[str, str]:
+    def _sliding_window_chunk(self, frame, current_time, last_chunk=False) -> Tuple[str, str]:
         if not self.frame_buffer:
             self.buffer_start_time = current_time
     
         # Send every Nth frame to YOLO queue
-        if self.obj_detect_enabled and self.frame_id % self.dfine_sample_rate == 0:
+        if self.obj_detect_enabled and self.frame_id % self.dfine_sample_rate == 0 and frame is not None:
             self.dfine_queue.append((self.frame_id, frame))
             
         # Add frame to buffer 
-        self.frame_buffer.append((self.frame_id, frame))
-        self.frame_id += 1
+        if frame is not None:
+            self.frame_buffer.append((self.frame_id, frame))
+            self.frame_id += 1
 
         # Once frame buffer reached window size, inference frames & consume buffer 
-        if len(self.frame_buffer) == self.window_size:
+        if len(self.frame_buffer) == self.window_size or last_chunk:
             # Retain start_time, end_time and chunk_id for metadata
             start_time = self.buffer_start_time
             end_time = start_time + (self.window_size / self.fps)
@@ -142,11 +142,12 @@ class RTSPChunkLoader(BaseLoader):
             done_consuming.wait()
 
             # Remove the oldest frames, excluding overlap
-            frames_to_remove = self.window_size - self.overlap
-            for _ in range(frames_to_remove):
-                self.frame_buffer.popleft()
+            if not last_chunk:
+                frames_to_remove = self.window_size - self.overlap
+                for _ in range(frames_to_remove):
+                    self.frame_buffer.popleft()
 
-            self.buffer_start_time += frames_to_remove / self.fps
+                self.buffer_start_time += frames_to_remove / self.fps
             return chunk_path, formatted_time, start_time, end_time, chunk_id, detected_objects
 
         return None, None, None, None, None, []
@@ -200,6 +201,12 @@ class RTSPChunkLoader(BaseLoader):
                 print(f"[D-FINE OV ERROR] Inference failed: {e}")
 
 
+    def _format_times(self, start_time, end_time):
+        if self.is_file:
+            return f"{start_time:.2f}s", f"{end_time:.2f}s"
+        else:
+            return datetime.fromtimestamp(start_time).isoformat(), datetime.fromtimestamp(end_time).isoformat()
+
     def lazy_load(self) -> Iterator[Document]:
         """Lazily load RTSP stream chunks as LangChain Documents."""
         print(f"[INFO] Starting RTSP stream ingestion")
@@ -242,15 +249,8 @@ class RTSPChunkLoader(BaseLoader):
 
                 # Use sliding window for ingestion scheme
                 chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(frame, current_time)
-
                 if chunk_path and formatted_time:
-                    if self.is_file:
-                        start_time = f"{start_time:.2f}s"
-                        end_time = f"{end_time:.2f}s"
-                    else:
-                        start_time = datetime.fromtimestamp(start_time).isoformat()
-                        end_time = datetime.fromtimestamp(end_time).isoformat()
-
+                    start_time, end_time = self._format_times(start_time, end_time)
                     yield Document(
                         page_content=f"Processed RTSP chunk saved at {chunk_path}",
                         metadata={
@@ -268,6 +268,32 @@ class RTSPChunkLoader(BaseLoader):
                     time.sleep(frame_delay - elapsed)
 
         finally:
+            # Process all remaining frames in the buffer
+            if len(self.frame_buffer) > 0:
+
+                if self.is_file:
+                    # Record relative time in seconds for video file
+                    current_time = self.frame_id / self.fps
+                else:
+                    # Record time when the cap starts reading frames from rtsp url
+                    current_time = time.time()
+
+                # Use sliding window for ingestion scheme
+                chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(None, current_time, last_chunk=True)
+                if chunk_path and formatted_time:
+                    start_time, end_time = self._format_times(start_time, end_time)
+                    yield Document(
+                        page_content=f"Processed RTSP chunk saved at {chunk_path}",
+                        metadata={
+                            "chunk_id": chunk_id,
+                            "chunk_path": chunk_path,
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "source": self.rtsp_url,
+                            "detected_objects": detections
+                        }
+                    )
+
             self.cap.release()
             self.stop_event.set()
             self.consumer_thread.join()
