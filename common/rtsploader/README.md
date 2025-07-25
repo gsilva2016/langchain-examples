@@ -8,7 +8,6 @@ from rtsploader_wrapper import RTSPChunkLoader
 
 rtsp_loader = RTSPChunkLoader(
     rtsp_url="rtsp://<user>:<pass>@<camera-ip>", # Can also be a local video file path
-    chunk_type="sliding_window", # Traditional sliding window with overlap
     chunk_args={
         "window_size": 30, # Number of seconds per chunk
         "overlap": 2, # Number of seconds of overlap between consecutive chunks
@@ -44,7 +43,6 @@ from rtsploader_wrapper import RTSPChunkLoader
 
 rtsp_loader = RTSPChunkLoader(
     rtsp_url="rtsp://<user>:<pass>@<camera-ip>", # Can also be a local video file path
-    chunk_type="sliding_window", # Traditional sliding window with overlap
     chunk_args={
         "window_size": 30, # Number of seconds per chunk
         "overlap": 2, # Number of seconds of overlap between consecutive chunks
