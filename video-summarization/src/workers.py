@@ -265,7 +265,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         
 def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue,
                     obj_detect_enabled: bool, obj_detect_path: str, obj_detect_sample_rate: int, 
-                    obj_detect_threshold: float, chunking_mechanism: str = "sliding_window"):
+                    obj_detect_threshold: float):
 
     # Initialize the video chunk loader
     chunk_args = {
@@ -282,7 +282,6 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
 
     loader = RTSPChunkLoader(
         rtsp_url=video_path,
-        chunk_type=chunking_mechanism,
         chunk_args=chunk_args,
     )
     
