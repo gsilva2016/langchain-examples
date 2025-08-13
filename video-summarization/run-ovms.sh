@@ -6,10 +6,10 @@ source activate-conda.sh
 activate_conda
 
 # Activate OVMS conda env
-conda activate ovms_env
+conda activate $OVMS_CONDA_ENV_NAME
 
 if [ $? -ne 0 ]; then
-    echo "Conda environment ovms_env activation has failed. Please check."
+    echo "Conda environment $OVMS_CONDA_ENV_NAME activation has failed. Please check."
     exit 1
 fi
 

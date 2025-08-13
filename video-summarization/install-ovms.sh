@@ -12,11 +12,11 @@ echo "Install OpenVINO Model Server (OVMS) on baremetal"
 source activate-conda.sh
 activate_conda
 
-conda create -n ovms_env python=3.12 -y
-conda activate ovms_env
+conda create -n $OVMS_CONDA_ENV_NAME python=3.12 -y
+conda activate $OVMS_CONDA_ENV_NAME
 
 if [ $? -ne 0 ]; then
-    echo "Conda environment ovms_env activation has failed. Please check."
+    echo "Conda environment $OVMS_CONDA_ENV_NAME activation has failed. Please check."
     exit 1
 fi
 
