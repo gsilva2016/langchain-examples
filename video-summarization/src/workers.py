@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from langchain_summarymerge_score import SummaryMergeScoreTool
 from common.rtsploader.rtsploader_wrapper import RTSPChunkLoader
 from common.sampler.frame_sampler import FrameSampler
+import time
 
 import requests
 from PIL import Image
@@ -164,7 +165,7 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
     milvus_frames_queue.put(None)
 
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
-                             prompt: str, max_new_tokens: int, obj_detect_enabled: bool):
+                             prompt: str, max_new_tokens: int, obj_detect_enabled: bool, worker: int):
     
     while True:        
         try:
@@ -233,6 +234,8 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             ]
         }
 
+        print(f"\n\n[INFO] Generating chunk summary for worker_{worker} inside workers.py...\n\n")
+        start_vlm_time = time.time() # record time @ start of inference
         # Send the request to the VLM model endpoint
         response = requests.post(OVMS_ENDPOINT, 
                                  json=data, 
@@ -245,7 +248,11 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         else:
             print("VLM: Error:", response.status_code, response.text)
             continue
-        
+
+        end_vlm_time = time.time() # record time @ end of inference
+        vlm_inf_time = end_vlm_time - start_vlm_time
+        print(f"\n\n[INFO] Time for VLM inference for worker_{worker}: {vlm_inf_time}sec\n\n")
+
         chunk_summary = {
             "video_path": chunk["video_path"],
             "chunk_id": chunk["chunk_id"],
@@ -262,6 +269,8 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
     print("VLM: Ending service")
     milvus_summaries_queue.put(None)
     merger_queue.put(None)
+    vlm_q.put(None)
+
         
 def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue,
                     obj_detect_enabled: bool, obj_detect_path: str, obj_detect_sample_rate: int, 

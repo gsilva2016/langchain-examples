@@ -3,6 +3,7 @@ import os
 import queue
 from concurrent.futures.thread import ThreadPoolExecutor
 from dotenv import load_dotenv
+import time
 
 from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus, generate_chunks
 from common.milvus.milvus_wrapper import MilvusManager
@@ -59,6 +60,8 @@ if __name__ == '__main__':
         "video_1": args.video_file, 
         # "video_2": second file
     }
+
+    start_pipeline_time = time.time() # mark beginning of E2E pipeline
     
     futures = []    
     with ThreadPoolExecutor() as pool:
@@ -80,19 +83,25 @@ if __name__ == '__main__':
         sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
                                     resolution=args.resolution)
         
-        print("Main: Starting frame ingestion into Milvus")
-        milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
+        #print("Main: Starting frame ingestion into Milvus")
+        #milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
         
         print("Main: Starting chunk summary generation")
-        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled)
+        workers = 2
+        cs_futures = []
+        for worker in range(workers):
+            print(f"\n[INFO] Generating chunk for worker_{worker}...\n\n")
+            cs_futures.append(pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled, worker))
+            #cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled, worker)
+        #cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled)
 
-        print("Main: Starting chunk summary ingestion into Milvus")
-        milvus_summaries_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
+        #print("Main: Starting chunk summary ingestion into Milvus")
+        #milvus_summaries_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
         
         # Summarize the full video, using the subsections summaries from each chunk
         # Post an HTTP request to OVMS for summary merger (shown below)
-        print("Main: Starting chunk summary merger")
-        merge_future = pool.submit(send_summary_request, merger_queue)
+        #print("Main: Starting chunk summary merger")
+        #merge_future = pool.submit(send_summary_request, merger_queue)
     
         for future in futures:
             future.result()
@@ -100,9 +109,13 @@ if __name__ == '__main__':
         chunk_queue.put(None)
         
         sample_future.result()
-        milvus_frames_future.result()
-        cs_future.result()
-        milvus_summaries_future.result()
-        merge_future.result()
+        #milvus_frames_future.result()
+        for cs_future in cs_futures:
+            cs_future.result()
+        #cs_future.result()
+        #milvus_summaries_future.result()
+        #merge_future.result()
 
+        end_pipeline_time = time.time() # mark end of E2E pipeline
+        print(f"\n\nE2E pipeline time elapsed: {end_pipeline_time - start_pipeline_time}\n\n")
         print("Main: All tasks completed")
