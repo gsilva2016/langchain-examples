@@ -1,6 +1,6 @@
 Metadata-Version: 2.3
 Name: langchain-openvino-multimodal
-Version: 0.2.1
+Version: 0.2.2
 Summary: An integration package connecting OpenVINOMultimodal and LangChain
 License: MIT
 Requires-Python: >=3.9,<4.0
@@ -17,7 +17,7 @@ Requires-Dist: langchain-huggingface (>=0.1.2,<0.2.0)
 Requires-Dist: timm (>=1.0.15,<2.0.0)
 Requires-Dist: torch (>=2.7.0,<3.0.0)
 Requires-Dist: torchvision (>=0.22.0,<0.23.0)
-Requires-Dist: transformers (==4.52.4)
+Requires-Dist: transformers (==4.53.3)
 Project-URL: Repository, https://github.com/langchain-ai/langchain
 Project-URL: Release Notes, https://github.com/langchain-ai/langchain/releases?q=tag%3A%22openvino-multimodal%3D%3D0%22&expanded=true
 Project-URL: Source Code, https://github.com/langchain-ai/langchain/tree/master/libs/partners/openvino-multimodal
