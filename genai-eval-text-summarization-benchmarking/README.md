@@ -1,3 +1,6 @@
+$${\color{red}This \space sample \space  was \space  archived \space  by \space  the \space  owner \space  on \space  August \space  14th, \space  2025. \space  It \space  is \space  now \space  read-only.}$$
+
+
 # Qualitative Assessment of Text Summarizations
 Perform a qualitative assessment of a candidate summarization by comparing it to a reference response. Metrics calculated: 
 
