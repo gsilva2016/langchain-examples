@@ -1,3 +1,6 @@
+$${\color{red}This \space sample \space  was \space  archived \space  by \space  the \space  owner \space  on \space  August \space  14th, \space  2025. \space  It \space  is \space  now \space  read-only.}$$
+
+
 # Chapterization
 Demonstrates a pipeline which automatically chapterizes long text/content from a provided audio context. The primary components utilize OpenVINO™ in LangChain* for audio-speech-recognition, embeddings generation, K-means clustering, and LLM chapterization.
 
@@ -37,3 +40,4 @@ export INF_DEVICE=GPU
 export ENABLE_KMEANS=1
 ./run-demo.sh audio.mp3
 ```
+
