@@ -1,3 +1,6 @@
+$${\color{red}This \space sample \space  was \space  archived \space  by \space  the \space  owner \space  on \space  August \space  14th, \space  2025. \space  It \space  is \space  now \space  read-only.}$$
+
+
 # QnA
 Demonstrates a pipeline which performs QnA. The primary components utilize OpenVINO™ in LangChain for audio-speech-recognition, LLM text generation/response, and text-to-speech (currently [OuteAI/OuteTTS-0.1-350M](https://github.com/openvinotoolkit/openvino_notebooks/blob/latest/notebooks/outetts-text-to-speech/outetts-text-to-speech.ipynb) and [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)).
 
@@ -70,3 +73,4 @@ export RAG_ENABLED=1
 export DEMO_MODE=1
 ./run-text-demo.sh
 ```
+
