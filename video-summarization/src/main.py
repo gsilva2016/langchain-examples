@@ -46,6 +46,7 @@ if __name__ == '__main__':
     
     # Create queues for inter-thread communication
     chunk_queue = queue.Queue()
+    frame_queue = queue.Queue()    
     milvus_frames_queue = queue.Queue()
     milvus_summaries_queue = queue.Queue()
     vlm_queue = queue.Queue()
@@ -70,6 +71,7 @@ if __name__ == '__main__':
                 args.chunk_duration,
                 args.chunk_overlap,
                 chunk_queue,
+                frame_queue,
                 obj_detect_enabled,
                 obj_detect_model_path,
                 obj_detect_sample_rate,

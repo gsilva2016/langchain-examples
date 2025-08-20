@@ -301,3 +301,97 @@ class RTSPChunkLoader(BaseLoader):
                 print(f"Dfine thread joining!")
                 self.dfine_thread.join()
             print("[INFO] RTSP stream processing complete.")
+            
+    def stream_frames_and_documents(self) -> Iterator[Tuple[str, object]]:
+        """
+        Yields ("frame", frame) for each frame as soon as possible, and ("document", Document)
+        when the buffer reaches window_size or at the last chunk.
+        """
+        print(f"[INFO] Starting RTSP stream ingestion (frames and documents)")
+
+        try:
+            self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
+            if not self.cap.isOpened():
+                raise RuntimeError("Failed to open RTSP stream with FFMPEG backend.")
+        except Exception as e:
+            print("[ERROR] FFMPEG backend is not available, please ensure FFMPEG is installed and accessible.")
+            return
+
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self.window_size = int(self.window_size * self.fps)
+        self.overlap = int(self.overlap * self.fps)
+        self.frame_buffer = deque(maxlen=self.window_size + self.overlap)
+
+        if self.is_file:
+            frame_delay = 0.5 / self.fps
+        else:
+            frame_delay = 0
+
+        try:
+            while True:
+                start = time.time()
+                ret, frame = self.cap.read()
+                if not ret:
+                    print("[INFO] Stream ended or error reading frame.")
+                    break
+
+                if self.is_file:
+                    current_time = self.frame_id / self.fps
+                else:
+                    current_time = time.time()
+
+                # Yield frame immediately
+                yield ("frame", frame)
+
+                # Use sliding window for ingestion scheme
+                chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(frame, current_time)
+                if chunk_path and formatted_time:
+                    start_time, end_time = self._format_times(start_time, end_time)
+                    doc = Document(
+                        page_content=f"Processed RTSP chunk saved at {chunk_path}",
+                        metadata={
+                            "chunk_id": chunk_id,
+                            "chunk_path": chunk_path,
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "source": self.rtsp_url,
+                            "detected_objects": detections
+                        }
+                    )
+                    yield ("document", doc)
+
+                elapsed = time.time() - start
+                if frame_delay > elapsed:
+                    time.sleep(frame_delay - elapsed)
+
+        finally:
+            # Process all remaining frames in the buffer
+            if len(self.frame_buffer) > 0:
+                if self.is_file:
+                    current_time = self.frame_id / self.fps
+                else:
+                    current_time = time.time()
+
+                chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(None, current_time, last_chunk=True)
+                if chunk_path and formatted_time:
+                    start_time, end_time = self._format_times(start_time, end_time)
+                    doc = Document(
+                        page_content=f"Processed RTSP chunk saved at {chunk_path}",
+                        metadata={
+                            "chunk_id": chunk_id,
+                            "chunk_path": chunk_path,
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "source": self.rtsp_url,
+                            "detected_objects": detections
+                        }
+                    )
+                    yield ("document", doc)
+
+            self.cap.release()
+            self.stop_event.set()
+            self.consumer_thread.join()
+            if self.obj_detect_enabled:
+                print(f"Dfine thread joining!")
+                self.dfine_thread.join()
+            print("[INFO] RTSP stream processing complete.")
