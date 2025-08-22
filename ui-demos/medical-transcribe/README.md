@@ -17,6 +17,11 @@
 ./install-gpu.sh
 ```
 
+### Install OpenVINO
+```
+./install-openvino.sh
+```
+
 ### Install and setup OpenVINO and Whisper.cpp (recommended OpenVINO 2024.6)
 ```
 ./install-whisper.sh
