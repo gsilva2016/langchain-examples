@@ -245,10 +245,9 @@ uploaded_file = st.sidebar.file_uploader("Upload a WAV audio file", type=["wav"]
 audio_data = st.sidebar.audio_input("Record Audio")
 
 if audio_data is not None:
-    temp_audio_path = tempfile.mktemp(suffix=".wav")
-
-    with open(temp_audio_path, "wb") as f:
-        f.write(audio_data.getvalue())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+        temp_audio.write(audio_data.getvalue())
+        temp_audio_path = temp_audio.name
 
     st.sidebar.success(f"Audio recorded and saved to {temp_audio_path}")
 
