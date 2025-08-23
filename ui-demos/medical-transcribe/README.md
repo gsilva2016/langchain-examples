@@ -65,7 +65,7 @@ run-whisper.bat
 ### Install
 1. Gain access to [Llama3.2](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) group of models on Hugging Face.
 2. Ensure you add the huggingface access token `HUGGINGFACE_TOKEN=<HF_TOKEN>` in `.env`
-3. The installation is validated on Ubuntu 22.04,  Ubuntu 24.04, and Windows 11.
+3. The installation is validated on Ubuntu 24.04 and Windows 11.
 
 #### Linux
 ```
