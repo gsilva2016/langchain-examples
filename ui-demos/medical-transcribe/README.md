@@ -36,7 +36,7 @@ install-openvino.bat
 ### Install
 #### Linux
 ```
-install-whisper.sh
+./install-whisper.sh
 ```
 
 Potential error
