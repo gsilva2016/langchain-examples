@@ -1,8 +1,9 @@
 @echo off
 setlocal
 
-IF not EXIST "C:\Users\%username%\AppData\Local\miniforge3\Scripts\" (
-	echo "Conda not found. Please install from https://conda-forge.org/download/ for local user as recommended."
+call conda >NUL 2>&1
+if not %errorlevel% == 0  (
+	echo "conda not found. Please run installer from a conda window."
 	goto :eof
 )
 
