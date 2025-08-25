@@ -75,6 +75,21 @@ Here is a detailed description of the video.
 1) Here is a bullet point list of suspicious behavior (if any) to highlight.
 '
 
+####### DeepSORT tracker configuration
+
+TRACKER_DET_MODEL_PATH="tracker_models/person-detection-0202/FP16/person-detection-0202.xml"
+TRACKER_REID_MODEL_PATH="tracker_models/person-reidentification-retail-0287/FP16/person-reidentification-retail-0287.xml"
+TRACKER_DEVICE="AUTO"
+TRACKER_NN_BUDGET=100
+TRACKER_MAX_COSINE_DISTANCE=0.5
+TRACKER_METRIC_TYPE="cosine"
+TRACKER_MAX_IOU_DISTANCE=0.7
+TRACKER_MAX_AGE=100
+TRACKER_N_INIT=1
+TRACKER_WIDTH=700
+TRACKER_HEIGHT=450
+TRACKER_DET_THRESH=0.5
+
 ####### Parameters for Milvus
 
 MILVUS_HOST="localhost"
