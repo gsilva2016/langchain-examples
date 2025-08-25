@@ -1,4 +1,12 @@
 from datetime import datetime
+import cv2
+import numpy as np
+from common.tracker.person_detection import PersonDetector
+from common.tracker.tracking import ReIDExtractor
+from common.tracker.deepsort_utils.nn_matching import NearestNeighborDistanceMetric
+from common.tracker.deepsort_utils.tracker import Tracker
+from common.tracker.deepsort_utils.detection import Detection, xywh_to_xyxy, xywh_to_tlwh, tlwh_to_xyxy
+from common.tracker.tracking import draw_boxes
 import os
 import queue
 from dotenv import load_dotenv
@@ -10,6 +18,7 @@ import requests
 from PIL import Image
 import io
 import base64
+import time
 
 load_dotenv()
 OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
@@ -264,8 +273,9 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
     merger_queue.put(None)
         
 def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue,
-                    frame_queue: queue.Queue, obj_detect_enabled: bool, obj_detect_path: str, obj_detect_sample_rate: int, 
-                    obj_detect_threshold: float):
+                    tracking_chunk_queue: queue.Queue, obj_detect_enabled: bool, obj_detect_path: str, 
+                    obj_detect_sample_rate: int, obj_detect_threshold: float, 
+                    chunking_mechanism: str = "sliding_window"):
     # Initialize the video chunk loader
     chunk_args = {
         "window_size": chunk_duration,
@@ -278,33 +288,184 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
             "dfine_sample_rate": obj_detect_sample_rate,
             "detection_threshold": obj_detect_threshold
         })
-
     loader = RTSPChunkLoader(
         rtsp_url=video_path,
-        chunk_args=chunk_args,
+        chunk_args=chunk_args
     )
     
     # Generate chunks
-    for kind, value in loader.stream_frames_and_documents():
-        if kind == "frame":
-            frame = value
-            frame_queue.put(frame)
-        elif kind == "document":
-            doc = value
-            print(f"CHUNK LOADER: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
-            chunk = {
-                "video_path": doc.metadata["source"],
-                "chunk_id": doc.metadata["chunk_id"],
-                "chunk_path": doc.metadata["chunk_path"],
-                "chunk_metadata": doc.page_content,
-                "start_time": doc.metadata["start_time"],
-                "end_time": doc.metadata["end_time"],
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "detected_objects": doc.metadata["detected_objects"]
-            }
-            chunk_queue.put(chunk)
-        
+    for doc in loader.lazy_load():
+        print(f"CHUNK LOADER: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
+        chunk = {
+            "video_path": doc.metadata["source"],
+            "chunk_id": doc.metadata["chunk_id"],
+            "chunk_path": doc.metadata["chunk_path"],
+            "chunk_metadata": doc.page_content,
+            "start_time": doc.metadata["start_time"],
+            "end_time": doc.metadata["end_time"],
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "detected_objects": doc.metadata["detected_objects"]
+        }
+        chunk_queue.put(chunk)
+        if tracking_chunk_queue is not None:
+            print("CHUNK LOADER: placing in tracking queue")            
+            tracking_chunk_queue.put(chunk)
     print(f"CHUNK LOADER: Chunk generation completed for {video_path}")
     
 def call_vertex():
     pass
+
+def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results_queue: queue.Queue,
+                             det_model_path: str, reid_model_path: str, device: str = "AUTO",
+                             nn_budget: int = 100, max_cosine_distance: float = 0.5, metric_type: str = "cosine",
+                             max_iou_distance: float = 0.7, max_age: int = 100, n_init: int = 1,
+                             resize_dim: tuple = (700, 450), sampling_rate: int = 1, det_thresh: float = 0.5,
+                             write_video: bool = True):
+    """
+    Chunk level DeepSORT tracking. Processes video chunks from tracking_chunk_queue,
+    runs detection and tracking, and puts results in tracking_results_queue.
+    Optionally writes output video with tracks if write_video is True.
+    """
+    # Initialize the person detector, re-identification extractor, metric, and tracker
+    detector = PersonDetector(det_model_path, device=device, thresh=det_thresh)
+    extractor = ReIDExtractor(reid_model_path, device=device)
+    metric = NearestNeighborDistanceMetric(metric_type, max_cosine_distance, nn_budget)
+    tracker = Tracker(metric, max_iou_distance=max_iou_distance, max_age=max_age, n_init=n_init)
+    sampler = None
+
+    while True:
+        start_t = time.time()
+                
+        # Get a chunk from the tracking queue
+        try:
+            chunk = tracking_chunk_queue.get(timeout=1)
+        except queue.Empty:
+            continue
+        
+        # End if none
+        if chunk is None:
+            break
+        
+        # Grab the video chunk file
+        video_path = chunk["chunk_path"]
+        
+        # Initialte sampler if not already done
+        if sampler is None:
+            from decord import VideoReader, cpu
+            vr = VideoReader(video_path, ctx=cpu(0))
+            fps = vr.get_avg_fps() if hasattr(vr, 'get_avg_fps') else 30
+            if sampling_rate <= 1:
+                max_num_frames = int(len(vr))  # sample every frame
+            else:
+                max_num_frames = max(1, int(len(vr) / sampling_rate))  # sample every Nth frame
+            sampler = FrameSampler(max_num_frames=max_num_frames, resolution=list(resize_dim), save_frame=False)
+        print(f"DeepSORT: Processing {max_num_frames} frames from {video_path}") 
+        
+        # Sample frames from the video chunk
+        sampled = sampler.sample_frames_from_video(video_path, [])
+        frames = sampled["frames"]
+        frame_ids = sampled["frame_ids"]
+
+        # Setup video writer for output video with tracks if enabled
+        if write_video:
+            output_video_path = os.path.splitext(video_path)[0] + "_tracks.mp4"
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            if len(frames) > 0:
+                h, w = frames[0].shape[:2]
+                out = cv2.VideoWriter(output_video_path, fourcc, fps, (w, h))
+            else:
+                out = None
+        else:
+            out = None
+        
+        h, w = None, None
+        chunk_tracking_results = []
+        for i, frame in enumerate(frames):
+            # Preprocess frame for detection
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            h, w = frame.shape[:2]
+            input_image = detector.preprocess(frame)
+
+            # Run person detection model
+            output = detector.compiled_model(input_image)[detector.output_layer]
+            bbox_xywh, score, label = detector.process_results(h, w, results=output)
+
+            # Crop detected person regions for re-identification
+            img_crops = []
+            for box in bbox_xywh:
+                x1, y1, x2, y2 = xywh_to_xyxy(box, h, w)
+                img = frame[y1:y2, x1:x2]
+                img_crops.append(img)
+
+            # Extract re-identification features for each crop
+            if img_crops:
+                img_batch = extractor.batch_preprocess(img_crops)
+                features = extractor.predict(img_batch)
+            else:
+                features = np.array([])
+
+            # Convert bounding boxes to tracker format
+            bbox_tlwh = xywh_to_tlwh(bbox_xywh)
+
+            # Create Detection objects for tracker
+            detections = [Detection(bbox_tlwh[i], features[i]) for i in range(features.shape[0])]
+
+            # Predict and update tracker state
+            tracker.predict()
+            tracker.update(detections)
+
+            # Collect confirmed tracks for this frame
+            outputs = []
+            reid_features = []
+            for track in tracker.tracks:
+                # Get confirmed tracks only, and convert track to bounding box format
+                if not track.is_confirmed() or track.time_since_update > 1:
+                    continue
+                box = track.to_tlwh()
+                x1, y1, x2, y2 = tlwh_to_xyxy(box, h, w)
+                track_id = track.track_id
+
+                # Append track information
+                outputs.append(np.array([x1, y1, x2, y2, track_id], dtype=np.int32))
+
+                # Save last re-identification feature for each track
+                reid_features.append(track.features[-1] if hasattr(track, 'features') and track.features else None)
+
+            # Prepare output arrays for bounding boxes and identities
+            if len(outputs) > 0:
+                outputs = np.stack(outputs, axis=0)
+                bbox_xyxy = outputs[:, :4]
+                identities = outputs[:, -1]
+            else:
+                bbox_xyxy = np.array([])
+                identities = np.array([])
+
+            # Draw tracks on frame and write to output video if enabled
+            if out is not None:
+                frame_with_tracks = draw_boxes(frame.copy(), bbox_xyxy, identities)
+                out.write(frame_with_tracks)
+
+            # Accumulate tracking results for this frame
+            chunk_tracking_results.append({
+                "chunk_id": chunk["chunk_id"],
+                "bbox_xyxy": bbox_xyxy,
+                "identities": identities,
+                "reid_features": reid_features,
+                "video_path": chunk["video_path"],
+                "chunk_path": chunk["chunk_path"],
+                "start_time": chunk["start_time"],
+                "end_time": chunk["end_time"]
+            })
+            
+        # Release video writer if enabled
+        if out is not None:
+            out.release()
+
+        # Put the list of tracking results for the chunk in the results queue
+        tracking_results_queue.put(chunk_tracking_results)
+        end_t = time.time() - start_t
+        print(f"DeepSORT: Finshed processing {video_path}: {len(frames)} frames in {end_t} sec")
+        
+    print("DeepSORT: Tracking completed")
+    # Signal completion by putting None in the results queue
+    tracking_results_queue.put(None)

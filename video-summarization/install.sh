@@ -93,6 +93,8 @@ if [ "$1" == "--skip" ]; then
 
 else
     echo "Installing dependencies"
+    activate_conda
+    
     sudo DEBIAN_FRONTEND=noninteractive apt update
     sudo DEBIAN_FRONTEND=noninteractive apt install git ffmpeg wget -y
 
@@ -137,6 +139,15 @@ fi
 
 echo "OpenVINO Model Server (OVMS) installation and creation of optimized model files completed successfully."
 echo ""
+
+# Download tracking models
+mkdir -p tracker_models/person-reidentification-retail-0287/FP16/
+wget -P ./tracker_models/person-reidentification-retail-0287/FP16/ https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/person-reidentification-retail-0287/FP16/person-reidentification-retail-0287.xml
+wget -P ./tracker_models/person-reidentification-retail-0287/FP16/ https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/person-reidentification-retail-0287/FP16/person-reidentification-retail-0287.bin
+
+mkdir -p tracker_models/person-detection-0202/FP16/
+wget -P ./tracker_models/person-detection-0202/FP16/ https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/person-detection-0202/FP16/person-detection-0202.xml
+wget -P ./tracker_models/person-detection-0202/FP16/ https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/person-detection-0202/FP16/person-detection-0202.bin
 
 # Create python environment
 echo "Creating conda environment $CONDA_ENV_NAME."
