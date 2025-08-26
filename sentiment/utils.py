@@ -15,7 +15,7 @@ def loadWordLevelASR(model_id, asr_device):
     model = AutoModelForSpeechSeq2Seq.from_pretrained(
         model_id, 
         torch_dtype=torch.float16 if "GPU" == asr_device else torch.float32,  
-        low_cpu_mem_usage=True, 
+        #low_cpu_mem_usage=True, 
         use_safetensors=True
     )
     print("loading processor", flush=True)
@@ -81,13 +81,13 @@ def loadSentimenter(endpoint, sentiment_model_id, device, batch_size, max_tokens
         )
     return ov_llm
 
-def getQwentTemplateRemote(text: str):
+def getQwenTemplateRemote(text: str):
     messages = [
     (
         "system",
         "You are trained to analyze and detect the sentiment of the given text. If you are unsure of an answer, you can say \"not sure\" and recommend the user review manually",
     ),
-    ("user", f"Analyze the following text and determine if the sentiment is: Positive, Negative, or Neutral. {text}"
+    ("user", f"Analyze the following text and determine if the sentiment is: Positive, Upset, Negative, or Neutral. {text}"
     )]
     return messages
 

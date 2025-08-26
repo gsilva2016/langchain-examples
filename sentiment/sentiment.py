@@ -35,7 +35,6 @@ print("ASR batch_size: ", args.asr_batch_size)
 print("ASR load_in_8bit: ", args.asr_load_in_8bit)
 print("Diarize model_id: ", args.diarize_model_id)
 print("Sentiment model_id: ", args.sentiment_model_id)
-print("Inference device  : ", args.device)
 print("Audio file: ", args.audio_file)
 print("Demo Mode Enabled: ", args.demo_mode)
 print("ASR Endpoint: ", args.asr_endpoint)
@@ -43,7 +42,7 @@ print("Diarize Endpoint: ", args.diarize_endpoint)
 print("Sentiment Endpoint: ", args.sentiment_endpoint)
 print("ASR Device: ", args.device)
 
-asr_device = "GPU" if "GPU" in args.device else args.device
+asr_device = args.device #"GPU" if "GPU" in args.device else args.device
 model_id = args.asr_model_id # openai/whisper-tiny
 
 check_audio_file = Path(args.audio_file)
@@ -55,6 +54,20 @@ if args.asr_endpoint != "":
 
 futures = []
 with ProcessPoolExecutor() as pool:
+
+    diarized_sentiment_future = pool.submit(
+        performDiarizedSentiment,
+        sentiment_q,
+        asr_q,
+        diarize_q,
+        args.sentiment_endpoint,
+        args.sentiment_model_id,
+        "cpu",
+        MAX_NEW_TOKENS,
+        1
+    )
+    futures.append(diarized_sentiment_future)
+
     diarize_future = pool.submit(
         performDiarize,
         diarize_q,
@@ -75,18 +88,6 @@ with ProcessPoolExecutor() as pool:
     futures.append(asr_future)
 
 
-    diarized_sentiment_future = pool.submit(
-        performDiarizedSentiment,
-        sentiment_q,
-        asr_q,
-        diarize_q,
-        args.sentiment_endpoint, 
-        args.sentiment_model_id, 
-        "cpu", 
-        MAX_NEW_TOKENS, 
-        1
-    )
-    futures.append(diarized_sentiment_future)
 
 print("Initialization completed...\n")
 

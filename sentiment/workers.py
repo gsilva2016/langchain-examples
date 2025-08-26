@@ -48,7 +48,6 @@ def performDiarize(q: Queue, endpoint, audio_file, model_id):
 
 
 def performDiarizedSentiment(sentiment_q: Queue, transcript_q: Queue, diarize_q: Queue, endpoint, model_id, device, max_tokens, batch_size =1): #-> List[Document]:
-    
     sentimenter = loadSentimenter(endpoint, model_id, device, batch_size, max_tokens)
     total_start_time = time.time()
     # wait for other services to send data
@@ -113,7 +112,7 @@ def performDiarizedSentiment(sentiment_q: Queue, transcript_q: Queue, diarize_q:
 
         sentiment_result = sentimenter.invoke(prompt).content if endpoint != "" else sentimenter.invoke(prompt)
         segmented_preds.append( Document(
-            page_content=f"A {sentiment_result} speaker: {segment.metadata['speaker']} stated: {chunk_text}",
+            page_content=f"A {sentiment_result} speaker {segment.metadata['speaker']} stated: {chunk_text}",
             metadata = {
                 "speaker": segment.metadata['speaker'],
                 "text": chunk_text,
