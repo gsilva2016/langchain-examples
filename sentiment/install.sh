@@ -45,6 +45,7 @@ else
 	cd ..
 fi
 
+source .env
 
 echo "Installing sentiment analysis"
 conda create -n langchain_sentiment_analysis_env python=3.12 -y --force # for a specific version
@@ -67,24 +68,18 @@ if command -v ovms &> /dev/null; then
     echo "OpenVINO Model Server (OVMS) is already installed."
 else
     echo "Downloading OpenVINO Model Server (OVMS)..."
-    if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
-        # Ubuntu 24.04
-        echo "Downloading for Ubuntu 24.04..."
-        wget -O ovms_ubuntu24_python_on.tar.gz https://github.com/openvinotoolkit/model_server/releases/download/v2025.2.1/ovms_ubuntu24_python_on.tar.gz
-        tar -xzvf ovms_ubuntu24_python_on.tar.gz
-    else
-        echo "Error: Unsupported Ubuntu version: $UBUNTU_VERSION"
-        echo "Only Ubuntu 24.04 are supported."
-        exit 1
-    fi
+    # Ubuntu 24.04
+    echo "Downloading for Ubuntu 24.04..."
+    wget -O ovms_ubuntu24_python_on.tar.gz https://github.com/openvinotoolkit/model_server/releases/download/v2025.2.1/ovms_ubuntu24_python_on.tar.gz
+    tar -xzvf ovms_ubuntu24_python_on.tar.gz
 fi
 
 #huggingface-cli login --token $HF_ACCESS_TOKEN
 
 curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2025.2.1/demos/common/export_models/export_model.py -o export_model.py
 
-rm -R ovms_models && true
-mkdir ovms_models
+rm -R models && true
+mkdir models
 echo "Creating OVMS models"
 if [ "$device" != "GPU" ] && [ "$device" != "CPU" ]
 then
