@@ -345,10 +345,10 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         # End if none
         if chunk is None:
             break
-        
+
         # Grab the video chunk file
         video_path = chunk["chunk_path"]
-        
+
         # Initialte sampler if not already done
         if sampler is None:
             from decord import VideoReader, cpu
@@ -360,7 +360,7 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 max_num_frames = max(1, int(len(vr) / sampling_rate))  # sample every Nth frame
             sampler = FrameSampler(max_num_frames=max_num_frames, resolution=list(resize_dim), save_frame=False)
         print(f"DeepSORT: Processing {max_num_frames} frames from {video_path}") 
-        
+
         # Sample frames from the video chunk
         sampled = sampler.sample_frames_from_video(video_path, [])
         frames = sampled["frames"]
@@ -377,7 +377,8 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 out = None
         else:
             out = None
-        
+
+        # Run tracking on sampled frames
         h, w = None, None
         chunk_tracking_results = []
         for i, frame in enumerate(frames):
@@ -414,22 +415,24 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             tracker.predict()
             tracker.update(detections)
 
-            # Collect confirmed tracks for this frame
+            # Get features for confirmed tracks and align with outputs by track_id
+            track_features_dict = tracker.get_track_features()
+
+            # Gather track info
             outputs = []
             reid_features = []
             for track in tracker.tracks:
-                # Get confirmed tracks only, and convert track to bounding box format
                 if not track.is_confirmed() or track.time_since_update > 1:
                     continue
                 box = track.to_tlwh()
                 x1, y1, x2, y2 = tlwh_to_xyxy(box, h, w)
                 track_id = track.track_id
-
-                # Append track information
                 outputs.append(np.array([x1, y1, x2, y2, track_id], dtype=np.int32))
+                reid_features.append(track_features_dict.get(track_id, []))
 
-                # Save last re-identification feature for each track
-                reid_features.append(track.features[-1] if hasattr(track, 'features') and track.features else None)
+            # Print aligned features for each output track
+            # for i, out_track in enumerate(outputs):
+            #     print(f"Track {out_track[-1]} features: {len(reid_features[i])}")
 
             # Prepare output arrays for bounding boxes and identities
             if len(outputs) > 0:
@@ -455,7 +458,7 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 "chunk_path": chunk["chunk_path"],
                 "start_time": chunk["start_time"],
                 "end_time": chunk["end_time"]
-            })
+            })            
             
         # Release video writer if enabled
         if out is not None:
@@ -465,7 +468,7 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         tracking_results_queue.put(chunk_tracking_results)
         end_t = time.time() - start_t
         print(f"DeepSORT: Finshed processing {video_path}: {len(frames)} frames in {end_t} sec")
-        
+
+    # Signal completion by putting None in the results queue        
     print("DeepSORT: Tracking completed")
-    # Signal completion by putting None in the results queue
     tracking_results_queue.put(None)

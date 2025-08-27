@@ -82,7 +82,7 @@ class Tracker:
                 continue
             features += track.features
             targets += [track.track_id for _ in track.features]
-            track.features = []
+            # track.features = []
         self.metric.partial_fit(np.asarray(features), np.asarray(targets), active_targets)
 
     def _match(self, detections):
@@ -145,3 +145,15 @@ class Tracker:
             )
         )
         self._next_id += 1
+
+    def get_track_features(self):
+        """
+        Returns a dictionary of track_id -> features for confirmed tracks,
+        and resets the features list for each track.
+        """
+        track_features = {}
+        for track in self.tracks:
+            if track.is_confirmed():
+                track_features[track.track_id] = track.features
+                track.features = []  # Reset after fetching
+        return track_features
