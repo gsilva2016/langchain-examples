@@ -35,11 +35,12 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, max_iou_distance=0.7, max_age=70, n_init=3):
+    def __init__(self, metric, max_iou_distance=0.7, max_age=70, n_init=3, max_feature_age=30):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
         self.n_init = n_init
+        self.max_feature_age = max_feature_age
 
         self.kf = kalman_filter.KalmanFilter()
         self.tracks = []
@@ -52,6 +53,11 @@ class Tracker:
         """
         for track in self.tracks:
             track.predict(self.kf)
+            # Track age for last_feature
+            if hasattr(track, 'last_feature_age'):
+                track.last_feature_age += 1
+            elif hasattr(track, 'last_feature'):
+                track.last_feature_age = 1
 
     def update(self, detections):
         """Perform measurement update and track management.
@@ -82,7 +88,20 @@ class Tracker:
                 continue
             features += track.features
             targets += [track.track_id for _ in track.features]
-            # track.features = []
+            # Always keep at least the last known feature
+            if track.features:
+                track.latest_features = track.features
+                track.last_feature = track.features[-1]
+                track.last_feature_age = 0  # Reset age when new feature is added
+            elif hasattr(track, 'last_feature'):
+                # Only use last_feature if age is within max_feature_age
+                if hasattr(track, 'last_feature_age') and track.last_feature_age <= self.max_feature_age:
+                    track.latest_features = [track.last_feature]
+                else:
+                    track.latest_features = []
+            else:
+                track.latest_features = []
+            track.features = []
         self.metric.partial_fit(np.asarray(features), np.asarray(targets), active_targets)
 
     def _match(self, detections):
@@ -148,12 +167,17 @@ class Tracker:
 
     def get_track_features(self):
         """
-        Returns a dictionary of track_id -> features for confirmed tracks,
-        and resets the features list for each track.
+        Returns a dictionary of track_id -> latest_features for confirmed tracks,
+        and resets the latest_features list for each track.
+        Ensures every confirmed track has a feature (last known feature if age is valid).
         """
         track_features = {}
         for track in self.tracks:
             if track.is_confirmed():
-                track_features[track.track_id] = track.features
-                track.features = []  # Reset after fetching
+                feats = getattr(track, 'latest_features', [])
+                # Only use last_feature if age is within max_feature_age
+                if not feats and hasattr(track, 'last_feature') and hasattr(track, 'last_feature_age') and track.last_feature_age <= self.max_feature_age:
+                    feats = [track.last_feature]
+                track_features[track.track_id] = feats
+                track.latest_features = []
         return track_features
