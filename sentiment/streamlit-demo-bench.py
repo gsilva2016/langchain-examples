@@ -385,6 +385,7 @@ st.sidebar.write(f"**Diarize Model:** {DIARIZE_MODEL}")
 
 if ASR_ENDPOINT:
     st.sidebar.write(f"**ASR Endpoint:** {ASR_ENDPOINT}")
+    CHUNK_LEN_S = -1
 else:
     WHISPER_MODEL = st.sidebar.selectbox(
         "ASR Model: ",
