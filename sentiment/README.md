@@ -16,6 +16,10 @@ Note: if this script has already been performed and you'd like to install code c
 ```
 
 ```
+./install-openvino.sh
+```
+
+```
 ./install-whisper.sh
 ```
 
