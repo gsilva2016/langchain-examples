@@ -52,6 +52,7 @@ conda create -n langchain_sentiment_analysis_env python=3.12 -y --force # for a 
 conda activate langchain_sentiment_analysis_env
 echo 'y' | conda install pip
 pip install -r requirements.txt --resume-retries 3
+conda install level-zero -c conda-forge # needed for level zero for XPU
 
 
 # OVMS

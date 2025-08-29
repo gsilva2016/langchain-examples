@@ -12,24 +12,26 @@ def initialize_shared(q):
 
 def loadWordLevelASR(model_id, asr_device):
     print("Load ASR MODEL", flush=True)
-    model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_id, 
-        torch_dtype=torch.float16 if "GPU" == asr_device else torch.float32,  
-        #low_cpu_mem_usage=True, 
-        use_safetensors=True
-    )
-    print("loading processor", flush=True)
+#    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+#        model_id, 
+#        torch_dtype=torch.float16 if "GPU" == asr_device else torch.float32,  
+#        #low_cpu_mem_usage=True, 
+#        use_safetensors=True
+#    )
+#    print("loading processor", flush=True)
 
     #model.to('xpu' if args.device == "GPU" else args.device)
     #print("ASR device model: ", model.device)
-    processor = AutoProcessor.from_pretrained(model_id)
+#    processor = AutoProcessor.from_pretrained(model_id)
+
     print("loading pipeline", flush=True)
     asr_loader = pipeline(
         "automatic-speech-recognition",
-        model=model.to('xpu') if "GPU" == asr_device else model,
-        tokenizer=processor.tokenizer,
-        feature_extractor=processor.feature_extractor,
-        device='xpu' if asr_device == 'GPU' else asr_device,
+        #model=model.to('xpu') if "GPU" == asr_device else model,
+        model = model_id,
+#        tokenizer=processor.tokenizer,
+#        feature_extractor=processor.feature_extractor,
+        device='cpu' # if asr_device == 'GPU' else asr_device,
     )
     return asr_loader
 
@@ -37,7 +39,8 @@ def loadDiarizer(endpoint, audio_file, model_id):
     diarize_loader = OpenVINOSpeechDiarizeLoader(
         api_base = None if endpoint == "" else endpoint,
         file_path = audio_file,
-        model_id = model_id
+        model_id = model_id,
+        device = 'gpu'
     )
     return diarize_loader
 

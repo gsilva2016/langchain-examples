@@ -15,6 +15,14 @@ Note: if this script has already been performed and you'd like to install code c
 ./install.sh --skip
 ```
 
+```
+./install-whisper.sh
+```
+
+```
+./run-whisper.sh
+```
+
 ## Run Examples
 
 All of the samples utilize [pyannote.audio](https://github.com/pyannote/pyannote-audio) for speaker diarization and require the user to accept the [terms and conditions](https://huggingface.co/pyannote/speaker-diarization-3.1).  After accepting the terms be sure to set your HF ACCESS TOKEN in the .env file.
