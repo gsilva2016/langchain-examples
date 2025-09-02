@@ -35,7 +35,7 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, max_iou_distance=0.7, max_age=70, n_init=3, max_feature_age=30):
+    def __init__(self, metric, max_iou_distance=0.7, max_age=70, n_init=3, max_feature_age=70):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
@@ -88,9 +88,10 @@ class Tracker:
                 continue
             features += track.features
             targets += [track.track_id for _ in track.features]
+
             # Always keep at least the last known feature
             if track.features:
-                track.latest_features = track.features
+                track.latest_features = [track.features[-1]]
                 track.last_feature = track.features[-1]
                 track.last_feature_age = 0  # Reset age when new feature is added
             elif hasattr(track, 'last_feature'):
@@ -101,6 +102,7 @@ class Tracker:
                     track.latest_features = []
             else:
                 track.latest_features = []
+
             track.features = []
         self.metric.partial_fit(np.asarray(features), np.asarray(targets), active_targets)
 
