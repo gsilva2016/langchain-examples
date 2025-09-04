@@ -16,7 +16,7 @@ if [ $? -ne 0 ]; then
     exit
 fi
 
-huggingface-cli login --token $HUGGINGFACE_TOKEN
+hf auth login --token $HUGGINGFACE_TOKEN
 
 if [ "$1" == "--skip" ] || [ "$2" == "--skip" ]; then
 	echo "Skipping sample video download"
@@ -50,7 +50,7 @@ if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then
     fi
     PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/rag.py --query_text "$QUERY_TEXT" --filter_expression "$FILTER_EXPR" \
     --query_img "$QUERY_IMG" --milvus_uri "$MILVUS_HOST" --milvus_port "$MILVUS_PORT" --milvus_dbname "$MILVUS_DBNAME" \
-    --collection_name "$COLLECTION_NAME" --retrieve_top_k "$RETRIEVE_TOP_K" --save_video_clip "$SAVE_VIDEO_CLIP" --video_clip_duration "$VIDEO_CLIP_DURATION"
+    --collection_name "$VIDEO_COLLECTION_NAME" --retrieve_top_k "$RETRIEVE_TOP_K" --save_video_clip "$SAVE_VIDEO_CLIP" --video_clip_duration "$VIDEO_CLIP_DURATION"
 
     echo "RAG completed"
 

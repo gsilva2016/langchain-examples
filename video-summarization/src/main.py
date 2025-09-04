@@ -4,8 +4,9 @@ import queue
 from concurrent.futures.thread import ThreadPoolExecutor
 from dotenv import load_dotenv
 
-from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus, generate_chunks, generate_deepsort_tracks
+from workers import get_sampled_frames, send_summary_request, ingest_summaries_into_milvus, generate_chunk_summaries, ingest_frames_into_milvus, generate_chunks, generate_deepsort_tracks, process_reid_embeddings, process_tracking_logs, show_tracking_data
 from common.milvus.milvus_wrapper import MilvusManager
+from langchain_openvino_multimodal import OpenVINOBlipEmbeddings
 
 
 if __name__ == '__main__':
@@ -66,21 +67,47 @@ if __name__ == '__main__':
     merger_queue = queue.Queue()
     tracking_chunk_queues = {}
     tracking_results_queues = {}
+    tracking_logs_queue = queue.Queue()
     
     # Initialize Milvus
     milvus_manager = MilvusManager()
+    collection_configs = [
+        (os.getenv("VIDEO_COLLECTION_NAME", "video_chunks"), 256),
+        (os.getenv("REID_COLLECTION_NAME", "reid_data"), 256),
+        (os.getenv("TRACKING_COLLECTION_NAME", "tracking_logs"), 256)
+    ]
+    for collection_name, dim in collection_configs:
+        milvus_manager.create_collection(
+            collection_name=collection_name,
+            dim=dim,
+            overwrite=True  # overwrite = True if collection already exists and you want to delete
+        )
+        
+    # Initialize Embedding Model
+    embedding_model = os.getenv("EMBEDDING_MODEL", "Salesforce/blip-itm-base-coco")
+    txt_embedding_device = os.getenv("TXT_EMBEDDING_DEVICE", "GPU")
+    img_embedding_device = os.getenv("IMG_EMBEDDING_DEVICE", "GPU")
+    ov_blip_embedder = OpenVINOBlipEmbeddings(model_id=embedding_model, ov_text_device=txt_embedding_device,
+                                                        ov_vision_device=img_embedding_device)
+
+    # Global track ID table
+    global_track_ids = {}
     
     # Video files or RTSP streams
     videos = {
         "video_1": args.video_file,
-        # "video_2": second file        
+        # "video_2":
     }
+    
+    # Initialize Queues
+    for video_id, video in videos.items():
+        tracking_results_queues[video_id] = queue.Queue()
+        tracking_chunk_queues[video_id] = queue.Queue()
     
     futures = []
     with ThreadPoolExecutor() as pool:
         print("Main: Starting RTSP camera streamer")
         for video_id, video in videos.items():
-            tracking_chunk_queues[video_id] = queue.Queue()
             futures.append(pool.submit(
                 generate_chunks,
                 video,
@@ -100,24 +127,14 @@ if __name__ == '__main__':
                                     resolution=args.resolution)
         
         print("Main: Starting frame ingestion into Milvus")
-        milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager)
-        
-        print("Main: Starting chunk summary generation")
-        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled)
-
-        print("Main: Starting chunk summary ingestion into Milvus")
-        milvus_summaries_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager)                
-        
-        # Summarize the full video, using the subsections summaries from each chunk
-        # Post an HTTP request to OVMS for summary merger (shown below)
-        print("Main: Starting chunk summary merger")
-        merge_future = pool.submit(send_summary_request, merger_queue)
+        milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager, ov_blip_embedder)
 
         # Start DeepSORT tracking workers for each video source
         print("Main: Starting DeepSORT tracking workers")
         tracking_futures = []
+        import numpy as np
+        base = np.random.rand(256)
         for video_id, video in videos.items():
-            tracking_results_queues[video_id] = queue.Queue()
             tracking_futures.append(pool.submit(
                 generate_deepsort_tracks,
                 tracking_chunk_queues[video_id],
@@ -132,22 +149,61 @@ if __name__ == '__main__':
                 tracker_max_age,
                 tracker_n_init,
                 tracker_dim,
-                det_thresh=tracker_det_thresh
+                det_thresh=tracker_det_thresh,
+                write_video=False,
+                base_embedding=base
             ))
+        
+        # Process re-id embeddings
+        print("Main: Starting re-id embedding processing")
+        reid_futures = []
+        for video_id, video in videos.items():
+            reid_futures.append(pool.submit(process_reid_embeddings, tracking_results_queues[video_id], tracking_logs_queue, global_track_ids, milvus_manager))
+
+        # Show tracking data
+        print("Main: Show tracking data")
+        generate_logs_future = pool.submit(show_tracking_data, global_track_ids)
+
+        # Process tracking logs
+        print("Main: Starting tracking logs processing")
+        process_logs_future = pool.submit(process_tracking_logs, tracking_logs_queue, milvus_manager, ov_blip_embedder)
+
+        print("Main: Starting chunk summary generation")
+        cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled)
+
+        print("Main: Starting chunk summary ingestion into Milvus")
+        milvus_summaries_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager, ov_blip_embedder)       
+        
+        # Summarize the full video, using the subsections summaries from each chunk
+        # Post an HTTP request to OVMS for summary merger (shown below)
+        print("Main: Starting chunk summary merger")
+        merge_future = pool.submit(send_summary_request, merger_queue)
 
         for future in futures:
             future.result()
 
         chunk_queue.put(None)
+        
         for video_id, video in videos.items():
             tracking_chunk_queues[video_id].put(None)
-        
+                
         sample_future.result()
         milvus_frames_future.result()
         cs_future.result()
         milvus_summaries_future.result()
         merge_future.result()
+        
         for tf in tracking_futures:
             tf.result()
+            
+        for reid_future in reid_futures:
+            reid_future.result()
+
+        global_track_ids[-1] = {}
+        generate_logs_future.result()
+        
+        tracking_logs_queue.put(None)
+
+        process_logs_future.result()
 
         print("Main: All tasks completed")

@@ -111,7 +111,7 @@ class RTSPChunkLoader(BaseLoader):
             chunk_id = str(uuid.uuid4())
             
             formatted_time = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S')
-            chunk_filename = f"chunk_{formatted_time}.mp4"
+            chunk_filename = f"chunk_{formatted_time}_{uuid.uuid4().hex}.mp4"
             chunk_path = os.path.join(self.output_dir, chunk_filename)
 
             frames_to_save = []

@@ -18,10 +18,11 @@ HUGGINGFACE_TOKEN=
 CONDA_ENV_NAME=ovlangvidsumm
 
 # OVMS endpoint for all models
+OVMS_CONDA_ENV_NAME=ovms_env
 OVMS_ENDPOINT="http://localhost:8013/v3/chat/completions"
 
 ####### Video ingestion configuration
-OBJ_DETECT_ENABLED="TRUE"
+OBJ_DETECT_ENABLED="FALSE"
 OBJ_DETECT_MODEL_PATH="ov_dfine/dfine-s-coco.xml"
 OBJ_DETECT_SAMPLE_RATE=5
 OBJ_DETECT_THRESHOLD=0.9
@@ -35,7 +36,23 @@ LLAMA_MODEL="meta-llama/Llama-3.2-3B-Instruct"
 SUMMARY_MERGER_LLM_DEVICE="GPU"
 
 # Prompt for merging multiple chunk summaries into one summary
-SUMMARY_PROMPT=<prompt included in the .env>
+SUMMARY_PROMPT='You are a video summarization agent. Your job is to merge multiple chunk summaries into one balanced and complete summary.
+Important: Treat all summaries as equally important. Do not prioritize summaries that have more detail or mention suspicious activity - your goal is to combine information, not amplify it.
+
+Guidelines:
+- Extract the most important insights from all summaries into a concise output.
+- Give equal importance to each chunk, regardless of its length or uniqueness.
+- Estimate the number of people in the scene based on textual hints. If summaries mention no people or say "empty" or "no visible customers", count that as 0 people. If someone is mentioned (e.g., "a customer", "a person walks in"), count them.
+- Only output one summary in the exact format below.
+- Do not include the input summaries or instructions in your response.
+
+Output Format:
+Overall Summary: <summary here>
+Activity Observed: <bullet points>
+Potential Suspicious Activity: <suspicious behavior if any>
+Number of people in the scene: <best estimate. DO NOT overcount>.
+Anomaly Score: <float from 0 to 1, based on severity of suspicious activity>.
+'
 
 ####### Embedding model configuration
 # Currently verified model
@@ -94,8 +111,12 @@ TRACKER_DET_THRESH=0.5
 
 MILVUS_HOST="localhost"
 MILVUS_PORT=19530
-MILVUS_DBNAME="milvus_db"
-COLLECTION_NAME="video_chunks"
+MILVUS_DBNAME="default"
+VIDEO_COLLECTION_NAME="video_chunks"
+REID_COLLECTION_NAME="reid_data"
+TRACKING_COLLECTION_NAME="tracking_logs"
+REID_SIM_SCORE_THRESHOLD=0.7
+TOO_SIMILAR_THRESHOLD=0.99
 
 ####### Parameters for summarization with --run_rag option
 
@@ -114,20 +135,20 @@ QUERY_IMG=
 # - detected_objects: list of objects detected in the chunk, e.g., 'person', 'car', 'bag', etc. An example is provided below. 
 
 # Examples of various types of `FILTER_EXPR` is provided below. Various supported operators can be referred to in Milvus' documentation - https://milvus.io/docs/boolean.md 
-# Example: To search only text summaries: "mode=='text'". To search only frames: "mode=='image'"
-# Example: To search for specific detected objects: "detected_objects LIKE '%<object name>%'"
-# Example: To search on a specific video: "video_path=='<path to video>'"
-# Example: Combine multiple filters using operator "and": "mode=='image' and video_path==<path to video> and detected_objects LIKE '%person%'"
+# Example: To search only text summaries: "metadata['mode'] == 'text'". To search only frames: "metadata['mode'] == 'image'"
+# Example: To search for specific detected objects: "metadata['detected_objects'] LIKE '%<object name>%'"
+# Example: To search on a specific video: "metadata['video_path'] == '<path to video>'"
+# Example: Combine multiple filters using operator "and": "metadata['mode'] == 'image' and metadata['video_path'] == '<path to video>' and metadata['detected_objects'] LIKE '%person%'"
 
-### Example: FILTER_EXPR="mode=='image' and detected_objects LIKE '%person%'". Search includes only image embeddings with detected objects that contain 'person'.
+### Example: FILTER_EXPR="metadata['mode'] == 'image' and metadata['detected_objects'] LIKE '%person%'". Search includes only image embeddings with detected objects that contain 'person'.
 FILTER_EXPR=
 
 # Save a video clip of Milvus search result
 SAVE_VIDEO_CLIP=True
 # Duration of the video clip in seconds
-VIDEO_CLIP_DURATION=5
+VIDEO_CLIP_DURATION=7
 # Number of top results to retrieve from Milvus
-RETRIEVE_TOP_K=2
+RETRIEVE_TOP_K=1
 
 ```
 

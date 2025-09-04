@@ -1,4 +1,7 @@
 from datetime import datetime
+import random
+import threading
+import uuid
 import cv2
 import numpy as np
 from common.tracker.person_detection import PersonDetector
@@ -14,6 +17,9 @@ from langchain_summarymerge_score import SummaryMergeScoreTool
 from common.rtsploader.rtsploader_wrapper import RTSPChunkLoader
 from common.sampler.frame_sampler import FrameSampler
 
+from common.milvus.milvus_wrapper import MilvusManager
+from langchain_openvino_multimodal import OpenVINOBlipEmbeddings
+
 import requests
 from PIL import Image
 import io
@@ -23,7 +29,12 @@ import time
 load_dotenv()
 OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
+SIM_SCORE_THRESHOLD = float(os.environ.get("REID_SIM_SCORE_THRESHOLD", 0.85))
+TOO_SIMILAR_THRESHOLD = float(os.environ.get("TOO_SIMILAR_THRESHOLD", 0.95))
 
+global_track_ids_lock = threading.Lock()
+
+        
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
     summary_merger = SummaryMergeScoreTool(api_base=OVMS_ENDPOINT)
 
@@ -67,28 +78,7 @@ def send_summary_request(summary_q: queue.Queue, n: int = 3):
             print("Summary Merger: All summaries processed, exiting.")
             return
     
-def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: object):    
-    while True:        
-        # if not frame_q.empty():
-        try:
-            chunk = frame_q.get()
-            
-            if chunk is None:
-                break
-            
-        except queue.Empty:
-            continue
-        
-        print(f"Milvus: Ingesting {len(chunk['frames'])} chunk frames from {chunk['chunk_id']} into Milvus")
-        try:
-            response = milvus_manager.embed_img_and_store(chunk)
-            
-            print(f"Milvus: Chunk Frames Ingested into Milvus: {response['status']}, Total frames in chunk: {response['total_frames_in_chunk']}")
-        
-        except Exception as e:
-            print(f"Milvus: Frame Ingestion Request failed: {e}")
-
-def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager: object):
+def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager: MilvusManager, ov_blip_embedder: OpenVINOBlipEmbeddings):    
     summaries = []
     last = False
 
@@ -105,7 +95,28 @@ def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager
         if summaries and (last or milvus_summaries_q.empty()):
             print(f"Milvus: Ingesting {len(summaries)} chunk summaries into Milvus")
             try:
-                response = milvus_manager.embed_txt_and_store(summaries)
+                all_summaries = [item["chunk_summary"] for item in summaries]
+                embeddings = ov_blip_embedder.embed_documents(all_summaries)
+                print(f"Generated {len(embeddings)} text embeddings of Shape: {embeddings[0].shape}")
+                
+                metadatas = [
+                    {
+                        "video_path": item["video_path"],
+                        "chunk_id": item["chunk_id"],
+                        "chunk_path": item["chunk_path"],
+                        "start_time": item["start_time"],
+                        "end_time": item["end_time"],
+                        "detected_objects": item.get("detected_objects", []),
+                        "mode": "text",
+                        "summary": item["chunk_summary"],
+                        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                    } for item in summaries
+                ]
+
+                response = milvus_manager.insert_data(collection_name=os.environ.get("VIDEO_COLLECTION_NAME", "video_chunks"),
+                                                      vectors=embeddings,
+                                                      metadatas=metadatas)
+                
                 print(f"Milvus: Chunk Summaries Ingested into Milvus: {response['status']}, Total chunks: {response['total_chunks']}")
             except Exception as e:
                 print(f"Milvus: Chunk Summaries Ingestion Request failed: {e}")
@@ -115,24 +126,51 @@ def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager
             print("Milvus: All summaries ingested, exiting.")
             break
 
-def search_in_milvus(query_text: str, milvus_manager: object):
-    try:
-        response = milvus_manager.search(query=query_text)
-        print(response.content)
+def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: MilvusManager, ov_blip_embedder: OpenVINOBlipEmbeddings):    
+    while True:        
+        # if not frame_q.empty():
+        try:
+            chunk = frame_q.get()
+            
+            if chunk is None:
+                break
+            
+        except queue.Empty:
+            continue
         
-        return response
-    
-    except Exception as e:
-        print(f"Search in Milvus: Request failed: {e}")
-
-def query_vectors(expr: str, milvus_manager: object, collection_name: str = "chunk_summaries"):
-    try:
-        response = milvus_manager.query(expr=expr, collection_name=collection_name)
+        print(f"Milvus: Ingesting {len(chunk['frames'])} chunk frames from {chunk['chunk_id']} into Milvus")
+        try:
+            all_sampled_images = chunk["frames"]
+            embeddings = ov_blip_embedder.embed_images(all_sampled_images)
+            print(f"Generated {len(embeddings)} img embeddings of Shape: {embeddings[0].shape}")
+            
+            metadatas = []
+            for idx in chunk["frame_ids"]:
+                objects = []
+                for x in chunk.get("detected_objects", []):
+                    if x.get("frame") == idx:
+                        objects = x.get("objects", [])
+                        break
+                metadatas.append({
+                    "video_path": chunk["video_path"],
+                    "chunk_id": chunk["chunk_id"],
+                    "frame_id": idx,
+                    "start_time": chunk["start_time"],
+                    "end_time": chunk["start_time"],
+                    "chunk_path": chunk["chunk_path"],
+                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "mode": "image",
+                    "detected_objects": str(objects)
+                })
+                            
+            response = milvus_manager.insert_data(collection_name=os.environ.get("VIDEO_COLLECTION_NAME", "video_chunks"),
+                                        vectors=embeddings,
+                                        metadatas=metadatas)
+            
+            print(f"Milvus: Chunk Frames Ingested into Milvus: {response['status']}, Total frames in chunk: {response['total_chunks']}")
         
-        return response
-    
-    except Exception as e:
-        print(f"Query Vectors: Request failed: {e}")
+        except Exception as e:
+            print(f"Milvus: Frame Ingestion Request failed: {e}")
 
 def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queue, vlm_queue: queue.Queue,
                        max_num_frames: int = 32, resolution: list = [], save_frame: bool = False):
@@ -311,16 +349,14 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
             print("CHUNK LOADER: placing in tracking queue")            
             tracking_chunk_queue.put(chunk)
     print(f"CHUNK LOADER: Chunk generation completed for {video_path}")
-    
-def call_vertex():
-    pass
 
 def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results_queue: queue.Queue,
                              det_model_path: str, reid_model_path: str, device: str = "AUTO",
                              nn_budget: int = 100, max_cosine_distance: float = 0.5, metric_type: str = "cosine",
                              max_iou_distance: float = 0.7, max_age: int = 100, n_init: int = 1,
                              resize_dim: tuple = (700, 450), sampling_rate: int = 1, det_thresh: float = 0.5,
-                             write_video: bool = True):
+                             write_video: bool = True,
+                             base_embedding=None):
     """
     Chunk level DeepSORT tracking. Processes video chunks from tracking_chunk_queue,
     runs detection and tracking, and puts results in tracking_results_queue.
@@ -332,6 +368,7 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
     metric = NearestNeighborDistanceMetric(metric_type, max_cosine_distance, nn_budget)
     tracker = Tracker(metric, max_iou_distance=max_iou_distance, max_age=max_age, n_init=n_init)
     sampler = None
+    batch_process = 50
 
     while True:
         start_t = time.time()
@@ -367,7 +404,7 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         frame_ids = sampled["frame_ids"]
 
         # Setup video writer for output video with tracks if enabled
-        if write_video:
+        if write_video:                
             output_video_path = os.path.splitext(video_path)[0] + "_tracks.mp4"
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             if len(frames) > 0:
@@ -381,9 +418,10 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         # Run tracking on sampled frames
         h, w = None, None
         chunk_tracking_results = []
-        for i, frame in enumerate(frames):
+        for (i, frame), frame_id in zip(enumerate(frames), frame_ids):
             # Preprocess frame for detection
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
             h, w = frame.shape[:2]
             input_image = detector.preprocess(frame)
 
@@ -430,10 +468,6 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 outputs.append(np.array([x1, y1, x2, y2, track_id], dtype=np.int32))
                 reid_features.append(track_features_dict.get(track_id, []))
 
-            # Print aligned features for each output track
-            # for i, out_track in enumerate(outputs):
-            #     print(f"Track {out_track[-1]} features: {len(reid_features[i])}")
-
             # Prepare output arrays for bounding boxes and identities
             if len(outputs) > 0:
                 outputs = np.stack(outputs, axis=0)
@@ -447,28 +481,205 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             if out is not None:
                 frame_with_tracks = draw_boxes(frame.copy(), bbox_xyxy, identities)
                 out.write(frame_with_tracks)
-
+            
+            if identities is None or len(identities) == 0:
+                continue
+            
             # Accumulate tracking results for this frame
-            chunk_tracking_results.append({
+            # TODO: Zach: Add condition to avoid DFINE processing in install.sh since not required in this codebase.
+            tracking_res = {
+                "frame_id": frame_id,
                 "chunk_id": chunk["chunk_id"],
-                "bbox_xyxy": bbox_xyxy,
-                "identities": identities,
-                "reid_features": reid_features,
+                "bboxes": bbox_xyxy.tolist(),
+                "object_class": ["person"] * len(bbox_xyxy),  
+                "track_ids": [int(trackid) for trackid in identities],
+                "reid_embeddings": [
+                    embedding.tolist()
+                    for feature_list in reid_features
+                    for embedding in feature_list
+                ],
                 "video_path": chunk["video_path"],
                 "chunk_path": chunk["chunk_path"],
                 "start_time": chunk["start_time"],
                 "end_time": chunk["end_time"]
-            })            
+            }
+            
+            chunk_tracking_results.append(tracking_res)
+            if len(chunk_tracking_results) >= batch_process: 
+                tracking_results_queue.put(chunk_tracking_results)
+                chunk_tracking_results = []
+                
+        if chunk_tracking_results:
+            tracking_results_queue.put(chunk_tracking_results)
             
         # Release video writer if enabled
         if out is not None:
             out.release()
 
-        # Put the list of tracking results for the chunk in the results queue
-        tracking_results_queue.put(chunk_tracking_results)
         end_t = time.time() - start_t
-        print(f"DeepSORT: Finshed processing {video_path}: {len(frames)} frames in {end_t} sec")
+        print(f"DeepSORT: ******** Finished processing {video_path}: {len(frames)} frames in {end_t:.2f}s")
 
-    # Signal completion by putting None in the results queue        
     print("DeepSORT: Tracking completed")
     tracking_results_queue.put(None)
+
+def show_tracking_data(global_track_ids: dict, interval = 5):
+    while True:
+        time.sleep(interval)
+        print("--------------------------Current state of global track IDs:------------------------------------------")
+        
+        if -1 in global_track_ids:            
+            print(f"Total active tracks: {len(global_track_ids) - 1}")
+            for track_id, info in global_track_ids.items():
+                print(f"Track ID: {track_id},       Info: {info}")
+            print("-----------------------------------------------------------------------------------------------------")
+            print("No active tracks, ending global track ids printing.")
+            break
+        
+        print(f"Total active tracks: {len(global_track_ids)}")
+        for track_id, info in global_track_ids.items():
+            print(f"Track ID: {track_id},       Info: {info}")
+        print("-----------------------------------------------------------------------------------------------------")
+
+def process_tracking_logs(tracking_logs_q: queue.Queue, milvus_manager: MilvusManager, ov_blip_embedder: OpenVINOBlipEmbeddings, collection_name: str = "tracking_logs"):
+    while True:
+        try:
+            events = []
+            max_events = 10
+            last = False
+            while len(events) < max_events:
+                try:
+                    event = tracking_logs_q.get_nowait()
+                    if event is None:
+                        last = True
+                        break
+                    events.append(event)
+                except queue.Empty:
+                    break
+            
+            if events:
+                texts = [event["description"] for event in events]
+                embeddings = ov_blip_embedder.embed_documents(texts)
+                response = milvus_manager.insert_data(collection_name=collection_name, 
+                                                    vectors=embeddings, 
+                                                    metadatas=events)
+                # print(f"Event Logging Ingestion Response: {response}")
+
+            if last:
+                break
+        
+        except Exception as e:
+            print( f"Error processing tracking logs: {e}")
+
+def insert_reid_embeddings(chunk: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):
+    batch_embeddings = []
+    batch_metadatas = []
+    global_assigned_ids = []
+    is_new_tracks = []
+    global_track_sources = []
+    local_track_ids = []
+
+    # for chunk in chunks:
+    identities = chunk.get("track_ids", [])
+    reid_embeddings = chunk.get("reid_embeddings", [])
+    frame_id = chunk.get("frame_id", -1)
+
+    search_results_batch = milvus_manager.search(collection_name=collection_name,
+                                                query_vector=reid_embeddings)
+
+    for i, emb in enumerate(reid_embeddings):
+
+        search_results = search_results_batch[i] if i < len(search_results_batch) else []
+        is_new_track = True
+        store = True
+
+        global_track_id = f"person_{uuid.uuid4().hex}"
+        
+        if search_results:
+            hit = search_results[0]
+
+            sim_score = hit["distance"]
+            if sim_score > SIM_SCORE_THRESHOLD:
+                is_new_track = False
+                metadata = hit["entity"]["metadata"]
+                global_track_id = metadata.get("global_track_id", global_track_id)
+                if sim_score > TOO_SIMILAR_THRESHOLD:
+                    store = False
+
+        if store:
+            metadata = {
+                "local_track_id": identities[i] if i < len(identities) else -1,
+                "global_track_id": global_track_id,
+                "video_path": chunk["video_path"],
+                "chunk_id": chunk["chunk_id"],
+                "chunk_path": chunk["chunk_path"],
+                "start_time": chunk["start_time"],
+                "end_time": chunk["end_time"],
+                "mode": "reid",
+                "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                "bbox": chunk["bboxes"][i] if i < len(chunk["bboxes"]) else [],
+                "object_class": chunk["object_class"][i] if i < len(chunk["object_class"]) else None,
+                "frame_id": frame_id
+            }
+            batch_embeddings.append(emb)
+            batch_metadatas.append(metadata)
+        
+        local_track_ids.append(identities[i] if i < len(identities) else -1)
+        global_assigned_ids.append(global_track_id)
+        is_new_tracks.append(is_new_track)
+        global_track_sources.append(chunk["video_path"])
+
+    # Batch insert 
+    if batch_embeddings and batch_metadatas:
+        response = milvus_manager.insert_data(collection_name=collection_name,
+                                              vectors=batch_embeddings,
+                                              metadatas=batch_metadatas)
+        # print(f"ReID Batch Ingestion Response for {len(batch_embeddings)} embeddings: {response}")
+
+    return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
+
+def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):
+    while True:
+        try:
+            chunk_batch = tracking_results_queue.get()
+             # End if none
+            if chunk_batch is None:
+                break
+
+        except queue.Empty:
+            continue
+        
+        for chunk in chunk_batch:
+            global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources = insert_reid_embeddings(chunk, milvus_manager, collection_name)
+            new_global_track_ids = [assigned_id for assigned_id, is_new_track in zip(global_assigned_ids, is_new_tracks) if is_new_track]
+
+            # Update global track ids with newly assigned track IDs
+            for idx, global_track_id in enumerate(global_assigned_ids):
+                with global_track_ids_lock:
+                    if global_track_id not in global_track_table:
+                        global_track_table[global_track_id] = {
+                            "is_assigned": False,
+                            "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "first_detected": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "seen_in": set([global_track_sources[idx]]) if idx < len(global_track_sources) else set()
+                        }
+                    else:
+                        global_track_table[global_track_id]["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        if idx < len(global_track_sources):
+                            global_track_table[global_track_id]["seen_in"].add(global_track_sources[idx])
+
+            # Emit an event to store for logging purposes, for now I am embedding 'description' using BLIP
+            for idx, global_track_id in enumerate(global_assigned_ids):
+                event = {
+                    "global_track_id": global_track_id,
+                    "event_type": "detected",
+                    "first_detected": global_track_table[global_track_id]["first_detected"],
+                    "event_creation_timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "is_assigned": global_track_table[global_track_id]["is_assigned"],
+                    "last_update": global_track_table[global_track_id]["last_update"],
+                    "seen_in": list(global_track_table[global_track_id]["seen_in"]),
+                    "description": f"Tracking event for ID {global_track_id}: assigned={global_track_table[global_track_id]['is_assigned']}, last_update={global_track_table[global_track_id]['last_update']}, seen in {list(global_track_table[global_track_id]['seen_in'])}"
+                }
+
+                tracking_logs_q.put(event)
+                # print(f"ReID: Logged event for track ID {track_id}")
+        print(f"------------Processed {len(chunk_batch)} batches for REID--------------")
