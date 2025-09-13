@@ -33,6 +33,7 @@ OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
 SIM_SCORE_THRESHOLD = float(os.environ.get("REID_SIM_SCORE_THRESHOLD", 0.85))
 TOO_SIMILAR_THRESHOLD = float(os.environ.get("TOO_SIMILAR_THRESHOLD", 0.95))
+PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 1))
 
 global_track_locks = defaultdict(threading.Lock)
 global_assignment_lock = threading.Lock()
@@ -660,7 +661,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
     
     now = datetime.now()
     partition_current = f"{collection_name}_{now.strftime('%Y%m%d_%H')}"
-    partition_prev = f"{collection_name}_{(now - timedelta(hours=1)).strftime('%Y%m%d_%H')}"
+    partition_prev = f"{collection_name}_{(now - timedelta(hours=PARTITION_CREATION_INTERVAL)).strftime('%Y%m%d_%H')}"
 
     search_partitions = [partition_current, partition_prev]
     

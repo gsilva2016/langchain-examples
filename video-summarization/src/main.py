@@ -102,8 +102,7 @@ if __name__ == '__main__':
     # Video files or RTSP streams
     videos = {
         "video_1": args.video_file,
-        "video_2":"/home/skk/expts/videos/woman.mp4",
-        # "video_3":"/home/skk/expts/videos/another_woman.mp4"
+        # "video_2":
     }
     
     # Initialize Queues
