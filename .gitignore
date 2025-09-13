@@ -28,3 +28,6 @@ neo/
 one-by-one*
 get-docker*
 ovms_requirements.txt
+tracker_models/*
+output_chunks/
+*report*

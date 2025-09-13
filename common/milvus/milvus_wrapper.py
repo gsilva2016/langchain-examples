@@ -1,137 +1,182 @@
+from datetime import datetime
 from typing import List
-from pymilvus import (
-    DataType,
-    MilvusClient
-)
+from pymilvus import DataType, MilvusClient
 from dotenv import load_dotenv
 import os
+import threading
 
 
 class MilvusManager:
+    _local = threading.local()  
+
     def __init__(self, db_name="default", host="localhost", port="19530", env_file: str = ".env"):
         load_dotenv(env_file)
 
-        milvus_dbname = os.getenv("MILVUS_DBNAME", db_name)
-        milvus_host = os.getenv("MILVUS_HOST", host)
-        milvus_port = os.getenv("MILVUS_PORT", port)
-        
-        self.milvus_client = MilvusClient(uri=f"http://{milvus_host}:{milvus_port}", db_name=milvus_dbname)
-        print(f"Connected to Milvus at {milvus_host}:{milvus_port} using database {milvus_dbname}")
-    
+        self.milvus_dbname = os.getenv("MILVUS_DBNAME", db_name)
+        self.milvus_host = os.getenv("MILVUS_HOST", host)
+        self.milvus_port = os.getenv("MILVUS_PORT", port)
+
+        test_client = MilvusClient(
+            uri=f"http://{self.milvus_host}:{self.milvus_port}",
+            db_name=self.milvus_dbname
+        )
+        print(f"Connected to Milvus at {self.milvus_host}:{self.milvus_port} "
+              f"using database {self.milvus_dbname}")
+
+    def _get_client(self) -> MilvusClient:
+        """
+        Get a thread-local MilvusClient instance
+        """
+        if not hasattr(self._local, "client"):
+            self._local.client = MilvusClient(uri=f"http://{self.milvus_host}:{self.milvus_port}", db_name=self.milvus_dbname
+                                              )
+        return self._local.client
+
     def create_collection(self, collection_name: str, dim: int, overwrite=False):
         """
         Create a new collection in Milvus
         """
+        client = self._get_client()
         try:
-            if self.milvus_client.has_collection(collection_name):
+            if client.has_collection(collection_name):
                 if overwrite:
                     print(f"Overwrite flag is set. Dropping existing collection {collection_name}.")
-                    self.milvus_client.drop_collection(collection_name)
+                    client.drop_collection(collection_name)
                 else:
                     print(f"Collection {collection_name} already exists.")
-                    self.milvus_client.load_collection(collection_name)
+                    client.load_collection(collection_name)
                     return
 
-            schema = self.milvus_client.create_schema(enable_dynamic_field=True) 
-            schema.add_field(field_name="pk", datatype=DataType.VARCHAR, max_length=64, is_primary=True, auto_id=True)
+            schema = client.create_schema(enable_dynamic_field=True)
+            schema.add_field(field_name="pk", datatype=DataType.VARCHAR,
+                             max_length=64, is_primary=True, auto_id=True)
             schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=dim)
             schema.add_field(field_name="metadata", datatype=DataType.JSON)
 
             index_params = MilvusClient.prepare_index_params()
-
             index_params.add_index(
-                field_name="vector", 
-                index_type="FLAT", 
-                index_name="vector_index", 
-                metric_type="COSINE", 
+                field_name="vector",
+                index_type="FLAT",
+                index_name="vector_index",
+                metric_type="COSINE",
             )
 
-            self.milvus_client.create_collection(
+            client.create_collection(
                 collection_name=collection_name,
                 index_params=index_params,
                 schema=schema,
             )
-        
+
         except Exception as e:
             print(f"Error creating collection {collection_name}: {e}")
-            raise e
-
+            raise
         finally:
-            res = self.milvus_client.get_load_state(collection_name=collection_name)
+            res = client.get_load_state(collection_name=collection_name)
             print(f"Collection {collection_name} with dimension {dim}: Load state: {res}")
-    
-    def insert_data(self, collection_name: str, vectors: list, metadatas: list):
+
+    def _ensure_partition(self, collection_name: str, partition_name: str):
+        """
+        Create partition if it does not exist
+        """
+        client = self._get_client()
+        try:
+            if not client.has_partition(collection_name, partition_name):
+                client.create_partition(collection_name=collection_name,
+                                        partition_name=partition_name)
+        except Exception as e:
+            print(f"Error creating partition {partition_name}: {e}")
+            raise
+
+    def generate_partition_name(self, prefix: str = "reid", fmt: str = "%Y%m%d_%H") -> str:
+        """
+        Generate a partition name based on current time
+        """
+        return f"{prefix}_{datetime.now().strftime(fmt)}"
+
+    def insert_data(self, collection_name: str, vectors: list, metadatas: list, partition_name: str = None):
         """
         Insert data into the collection
         """
+        client = self._get_client()
         try:
-            
-            if not self.milvus_client.has_collection(collection_name):
+            if not client.has_collection(collection_name):
                 raise ValueError(f"Collection {collection_name} does not exist.")
+
+            if partition_name is None:
+                partition_name = self.generate_partition_name(prefix=collection_name)
+
+            if partition_name:
+                self._ensure_partition(collection_name, partition_name)
 
             if metadatas is None:
                 metadatas = [{} for _ in range(len(vectors))]
 
-            records = []
-            for vec, meta in zip(vectors, metadatas):
-                records.append({
-                    "vector": vec,
-                    "metadata": meta
-                })
-
-            resp = self.milvus_client.insert(collection_name=collection_name, data=records)
+            records = [{"vector": vec, "metadata": meta} for vec, meta in zip(vectors, metadatas)]
+            resp = client.insert(collection_name=collection_name, data=records, partition_name=partition_name)
 
             return {"status": "success", "total_chunks": resp["insert_count"]}
-
         except Exception as e:
             print(f"Error inserting data into {collection_name}: {e}")
             return {"status": "error", "message": str(e)}
-    
-    def search(self, collection_name: str, query_vector: List[list] | list, limit: int = 1, filter: str = ""):
+
+    def search(self, collection_name: str, query_vector: List[list] | list,
+               limit: int = 1, filter: str = "", partition_names: list = None):
         """
         Search for similar vectors in the collection
         """
+        client = self._get_client()
         try:
-            if not self.milvus_client.has_collection(collection_name):
+            if not client.has_collection(collection_name):
                 raise ValueError(f"Collection {collection_name} does not exist.")
-            
-            search_params = {
-                "metric_type": "COSINE",
-                "params": {"nprobe": 10}
-            }
 
-            results = self.milvus_client.search(
+            search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+
+            if partition_names:
+                existing_partitions = client.list_partitions(collection_name)
+                partition_names = [p for p in partition_names if p in existing_partitions]
+                if not partition_names:
+                    print(f"None of the specified partitions exist in {collection_name}.")
+                    partition_names = None
+
+            results = client.search(
                 collection_name=collection_name,
                 data=query_vector,
                 output_fields=["metadata", "vector"],
                 limit=limit,
                 filter=filter,
                 search_params=search_params,
-                consistency_level="Strong"
+                consistency_level="Strong",
+                partition_names=partition_names
             )
-            
             return list(results)
-
         except Exception as e:
             print(f"Error searching in {collection_name}: {e}")
             return {"status": "error", "message": str(e)}
-    
-    def query(self, collection_name: str, filter: str = "", limit: int = 100):
+
+    def query(self, collection_name: str, filter: str = "", limit: int = 100, partition_names: list = None):
         """
         Query the collection with an expression
         """
-        try:            
-            if not self.milvus_client.has_collection(collection_name):
+        client = self._get_client()
+        try:
+            if not client.has_collection(collection_name):
                 raise ValueError(f"Collection {collection_name} does not exist.")
-            
-            results = self.milvus_client.query(
+
+            if partition_names:
+                existing_partitions = client.list_partitions(collection_name)
+                partition_names = [p for p in partition_names if p in existing_partitions]
+                if not partition_names:
+                    print(f"None of the specified partitions exist in {collection_name}.")
+                    partition_names = None
+
+            results = client.query(
                 collection_name=collection_name,
                 filter=filter,
                 output_fields=["pk", "metadata"],
-                limit=limit
+                limit=limit,
+                partition_names=partition_names
             )
             return results
-
         except Exception as e:
             print(f"Error querying {collection_name}: {e}")
             return {"status": "error", "message": str(e)}

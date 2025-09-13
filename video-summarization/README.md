@@ -21,6 +21,14 @@ CONDA_ENV_NAME=ovlangvidsumm
 OVMS_CONDA_ENV_NAME=ovms_env
 OVMS_ENDPOINT="http://localhost:8013/v3/chat/completions"
 
+####### Sub Module Status
+# If False, Doesn't run MiniCPM, LLAMA pipelines. 
+RUN_VLM_PIPELINE="TRUE"
+# If False, Doesn't run Tracking pipeline. 
+RUN_REID_PIPELINE="TRUE"
+# If True, saves re-identification visualization videos in chunks directory
+SAVE_REID_VIZ_VIDOES="FALSE"
+
 ####### Video ingestion configuration
 OBJ_DETECT_ENABLED="FALSE"
 OBJ_DETECT_MODEL_PATH="ov_dfine/dfine-s-coco.xml"
@@ -118,6 +126,11 @@ TRACKING_COLLECTION_NAME="tracking_logs"
 REID_SIM_SCORE_THRESHOLD=0.7
 TOO_SIMILAR_THRESHOLD=0.99
 
+####### Parameters for reporting agent
+
+# Time in seconds
+REPORT_GENERATION_TIME_SECS=10  
+
 ####### Parameters for summarization with --run_rag option
 
 # Query text to search for in the Vector DB
@@ -205,9 +218,21 @@ Pipeline uses [OVMS (OpenVINO Model Server)](https://github.com/openvinotoolkit/
 
 This pipeline uses BLIP for creating embeddings out of text and images. The subsequent vectors are stored in MIlvus DB. Model details are present in the configuration file `.env`.
 
-## Run Video Summarization
+## Run Video Pipeline
 
-Summarize [this sample video](https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4)
+The Video Pipeline consists of:
+
+1. Tracking/REID modules
+
+2. Summarization modules (miniCPM and LLAMA based pipeline)
+
+To turn off the Summarization pipeline, set RUN_VLM_PIPELINE="FALSE" in .env file. Default is TRUE.
+
+To turn off the Tracking pipeline, set RUN_REID_PIPELINE="FALSE" in .env file. Default is TRUE.
+
+The Tracking module can save videos with the tracking results overlayed. To turn it on, set SAVE_REID_VIZ_VIDOES="TRUE" in .env file. Default is FALSE.
+
+Run Video Pipeline on [this sample video](https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4)
 
 ```
 ./run-demo.sh 

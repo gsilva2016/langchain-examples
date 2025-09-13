@@ -55,18 +55,23 @@ if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then
     echo "RAG completed"
 
 else
-    bash run-ovms.sh
+    if [ "$RUN_VLM_PIPELINE" == "TRUE" ]; then
+        echo "Running VLM pipeline on video"
+        bash run-ovms.sh
 
-    if [ $? -ne 0 ]; then
-        echo "OVMS setup failed. Please check the logs."
-        exit 1
+        if [ $? -ne 0 ]; then
+            echo "OVMS setup failed. Please check the logs."
+            exit 1
+        fi
+    else
+        echo "Skipping VLM pipeline on video"
     fi
-    
-    echo "Running Video Summarizer on video file: $INPUT_FILE"
+        
+    echo "Running Video Pipeline on video file: $INPUT_FILE"
     PYTHONPATH=$PROJECT_ROOT_DIR TOKENIZERS_PARALLELISM=true python src/main.py $INPUT_FILE -r $RESOLUTION_X $RESOLUTION_Y -p "$PROMPT"
     echo ""
 
-    echo "Video summarization completed"
+    echo "Video Pipeline completed"
     echo ""
 fi
 
