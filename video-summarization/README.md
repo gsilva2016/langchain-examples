@@ -154,6 +154,7 @@ QUERY_IMG=
 # Example: Combine multiple filters using operator "and": "metadata['mode'] == 'image' and metadata['video_path'] == '<path to video>' and metadata['detected_objects'] LIKE '%person%'"
 
 ### Example: FILTER_EXPR="metadata['mode'] == 'image' and metadata['detected_objects'] LIKE '%person%'". Search includes only image embeddings with detected objects that contain 'person'.
+# Example: FILTER_EXPR="metadata['mode'] == 'text'" for searching through summaries
 FILTER_EXPR=
 
 # Save a video clip of Milvus search result
