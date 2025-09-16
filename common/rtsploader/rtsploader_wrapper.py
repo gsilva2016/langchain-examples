@@ -90,7 +90,7 @@ class RTSPChunkLoader(BaseLoader):
             except Exception as e:
                 print(f"[ERROR] Consumer failed: {e}")
 
-    def _sliding_window_chunk(self, frame, current_time, last_chunk=False) -> Tuple[str, str]:
+    def _sliding_window_chunk(self, frame, file_name, current_time, last_chunk=False) -> Tuple[str, str]:
         if not self.frame_buffer:
             self.buffer_start_time = current_time
     
@@ -111,7 +111,7 @@ class RTSPChunkLoader(BaseLoader):
             chunk_id = str(uuid.uuid4())
             
             formatted_time = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S')
-            chunk_filename = f"chunk_{formatted_time}_{uuid.uuid4().hex}.mp4"
+            chunk_filename = f"{file_name}_chunk_{formatted_time}_{uuid.uuid4().hex}.mp4"
             chunk_path = os.path.join(self.output_dir, chunk_filename)
 
             frames_to_save = []
@@ -228,6 +228,8 @@ class RTSPChunkLoader(BaseLoader):
         # Check if video is file in order to add proper frame delay for object detection
         if self.is_file:
             print(f"[INFO] Processing local video file: {self.rtsp_url}")
+            file_name = f"{os.path.basename(self.rtsp_url).split('.')[0]}"
+            file_name = file_name.replace(" ", "_")
             frame_delay = 0.5 / self.fps
         else:
             frame_delay = 0
@@ -248,7 +250,7 @@ class RTSPChunkLoader(BaseLoader):
                     current_time = time.time()
 
                 # Use sliding window for ingestion scheme
-                chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(frame, current_time)
+                chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(frame, file_name, current_time)
                 if chunk_path and formatted_time:
                     start_time, end_time = self._format_times(start_time, end_time)
                     yield Document(
@@ -279,7 +281,7 @@ class RTSPChunkLoader(BaseLoader):
                     current_time = time.time()
 
                 # Use sliding window for ingestion scheme
-                chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(None, current_time, last_chunk=True)
+                chunk_path, formatted_time, start_time, end_time, chunk_id, detections = self._sliding_window_chunk(None, file_name, current_time, last_chunk=True)
                 if chunk_path and formatted_time:
                     start_time, end_time = self._format_times(start_time, end_time)
                     yield Document(

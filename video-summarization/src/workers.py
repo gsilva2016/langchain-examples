@@ -33,6 +33,7 @@ OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
 SIM_SCORE_THRESHOLD = float(os.environ.get("REID_SIM_SCORE_THRESHOLD", 0.85))
 TOO_SIMILAR_THRESHOLD = float(os.environ.get("TOO_SIMILAR_THRESHOLD", 0.95))
+AMBIGUITY_MARGIN = float(os.environ.get("AMBIGUITY_MARGIN", 0.02))
 PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 1))
 
 global_track_locks = defaultdict(threading.Lock)
@@ -64,22 +65,22 @@ def send_summary_request(summary_q: queue.Queue, n: int = 3):
                 break
 
         if len(summaries) >= n or (last and summaries):
-            print(f"Summary Merger: Received {len(summaries)} chunk summaries for merging")
+            print(f"[Summary Merger]: Received {len(summaries)} chunk summaries for merging")
             formatted_req = {
                 "summaries": {chunk["chunk_id"]: chunk["chunk_summary"] for chunk in summaries}
             }
-            print(f"Summary Merger: Sending {len(summaries)} chunk summaries for merging")
+            print(f"[Summary Merger]: Sending {len(summaries)} chunk summaries for merging")
             try:
                 merge_res = summary_merger.invoke(formatted_req)
-                print(f"Overall Summary: {merge_res['overall_summary']}")
-                print(f"Anomaly Score: {merge_res['anomaly_score']}")
+                print(f"[Summary Merger]: Overall Summary: {merge_res['overall_summary']}")
+                print(f"[Summary Merger]: Anomaly Score: {merge_res['anomaly_score']}")
             except Exception as e:
-                print(f"Summary Merger: Request failed: {e}")
+                print(f"[Summary Merger]: Request failed: {e}")
 
             summaries = []
 
         if last and not summaries:
-            print("Summary Merger: All summaries processed, exiting.")
+            print("[Summary Merger]: All summaries processed, exiting.")
             return
     
 def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager: MilvusManager, ov_blip_embedder: OpenVINOBlipEmbeddings):    
@@ -97,12 +98,12 @@ def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager
             pass  
 
         if summaries and (last or milvus_summaries_q.empty()):
-            print(f"Milvus: Ingesting {len(summaries)} chunk summaries into Milvus")
+            print(f"[Milvus]: Ingesting {len(summaries)} chunk summaries into Milvus")
             try:
                 all_summaries = [item["chunk_summary"] for item in summaries]
                 embeddings = ov_blip_embedder.embed_documents(all_summaries)
-                print(f"Generated {len(embeddings)} text embeddings of Shape: {embeddings[0].shape}")
-                
+                print(f"[Milvus]: Generated {len(embeddings)} text embeddings of Shape: {embeddings[0].shape}")
+
                 metadatas = [
                     {
                         "video_path": item["video_path"],
@@ -120,14 +121,14 @@ def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager
                 response = milvus_manager.insert_data(collection_name=os.environ.get("VIDEO_COLLECTION_NAME", "video_chunks"),
                                                       vectors=embeddings,
                                                       metadatas=metadatas)
-                
-                print(f"Milvus: Chunk Summaries Ingested into Milvus: {response['status']}, Total chunks: {response['total_chunks']}")
+
+                print(f"[Milvus]: Chunk Summaries Ingested into Milvus: {response['status']}, Total chunks: {response['total_chunks']}")
             except Exception as e:
-                print(f"Milvus: Chunk Summaries Ingestion Request failed: {e}")
+                print(f"[Milvus]: Chunk Summaries Ingestion Request failed: {e}")
             summaries = []  
 
         if last and not summaries:
-            print("Milvus: All summaries ingested, exiting.")
+            print("[Milvus]: All summaries ingested, exiting.")
             break
 
 def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: MilvusManager, ov_blip_embedder: OpenVINOBlipEmbeddings):    
@@ -141,8 +142,8 @@ def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: MilvusManage
             
         except queue.Empty:
             continue
-        
-        print(f"Milvus: Ingesting {len(chunk['frames'])} chunk frames from {chunk['chunk_id']} into Milvus")
+
+        print(f"[Milvus]: Ingesting {len(chunk['frames'])} chunk frames from {chunk['chunk_id']} into Milvus")
         try:
             all_sampled_images = chunk["frames"]
             embeddings = ov_blip_embedder.embed_images(all_sampled_images)
@@ -170,11 +171,11 @@ def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: MilvusManage
             response = milvus_manager.insert_data(collection_name=os.environ.get("VIDEO_COLLECTION_NAME", "video_chunks"),
                                         vectors=embeddings,
                                         metadatas=metadatas)
-            
-            print(f"Milvus: Chunk Frames Ingested into Milvus: {response['status']}, Total frames in chunk: {response['total_chunks']}")
-        
+
+            print(f"[Milvus]: Chunk Frames Ingested into Milvus: {response['status']}, Total frames in chunk: {response['total_chunks']}")
+
         except Exception as e:
-            print(f"Milvus: Frame Ingestion Request failed: {e}")
+            print(f"[Milvus]: Frame Ingestion Request failed: {e}")
 
 def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queue, vlm_queue: queue.Queue,
                        max_num_frames: int = 32, resolution: list = [], save_frame: bool = False):
@@ -191,12 +192,12 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
             break
         
         # Sample frames from the video chunk
-        print(f"SAMPLER: Sampling frames {max_num_frames} from chunk: {chunk['chunk_id']}")
+        print(f"[SAMPLER]: Sampling frames {max_num_frames} from chunk: {chunk['chunk_id']}")
         video_path = chunk["chunk_path"]
         try:
             frames_dict = sampler.sample_frames_from_video(video_path, chunk["detected_objects"])
         except Exception as e:
-            print(f"SAMPLER: sampling failed: {e}")
+            print(f"[SAMPLER]: sampling failed: {e}")
         
         sampled = {
             "video_path": chunk["video_path"],
@@ -209,8 +210,8 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
         }
         vlm_queue.put({**sampled, "detected_objects": frames_dict["detected_objects"]})
         milvus_frames_queue.put({**sampled, "detected_objects": chunk["detected_objects"]})
-        
-    print("SAMPLER: Sampling completed")
+
+    print("[SAMPLER]: Sampling completed")
     vlm_queue.put(None)
     milvus_frames_queue.put(None)
 
@@ -225,7 +226,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
 
         except queue.Empty:
             continue
-        print(f"VLM: Generating chunk summary for chunk {chunk['chunk_id']}")
+        print(f"[VLM]: Generating chunk summary for chunk {chunk['chunk_id']}")
         
         # Prepare the frames for the VLM request
         content = []
@@ -292,9 +293,9 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         if response.status_code == 200:
             output_json = response.json()
             output_text = output_json["choices"][0]["message"]["content"]
-            print("VLM: Model response:", output_json)
+            print("[VLM]: Model response:", output_json)
         else:
-            print("VLM: Error:", response.status_code, response.text)
+            print("[VLM]: Error:", response.status_code, response.text)
             continue
         
         chunk_summary = {
@@ -310,7 +311,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         milvus_summaries_queue.put(chunk_summary)
         merger_queue.put(chunk_summary)
 
-    print("VLM: Ending service")
+    print("[VLM]: Ending service")
     milvus_summaries_queue.put(None)
     merger_queue.put(None)
         
@@ -337,7 +338,7 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
     
     # Generate chunks
     for doc in loader.lazy_load():
-        print(f"CHUNK LOADER: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
+        print(f"[CHUNK LOADER]: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
         chunk = {
             "video_path": doc.metadata["source"],
             "chunk_id": doc.metadata["chunk_id"],
@@ -350,9 +351,9 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
         }
         chunk_queue.put(chunk)
         if tracking_chunk_queue is not None:
-            print("CHUNK LOADER: placing in tracking queue")            
+            print("[CHUNK LOADER]: placing in tracking queue")
             tracking_chunk_queue.put(chunk)
-    print(f"CHUNK LOADER: Chunk generation completed for {video_path}")
+    print(f"[CHUNK LOADER]: Chunk generation completed for {video_path}")
 
 def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results_queue: queue.Queue,
                              det_model_path: str, reid_model_path: str, device: str = "AUTO",
@@ -403,7 +404,7 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             else:
                 max_num_frames = max(1, int(len(vr) / sampling_rate))  # sample every Nth frame
             sampler = FrameSampler(max_num_frames=max_num_frames, resolution=list(resize_dim), save_frame=False)
-        print(f"DeepSORT: Processing {max_num_frames} frames from {video_path}") 
+        print(f"[DeepSORT]: Processing {max_num_frames} frames from {video_path}")
 
         # Sample frames from the video chunk
         sampled = sampler.sample_frames_from_video(video_path, [])
@@ -527,12 +528,13 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             
         # Release video writer if enabled
         if out is not None:
+            # print(f"[DeepSORT]: Output video with tracks written to {output_video_path}")
             out.release()
 
         end_t = time.time() - start_t
-        print(f"DeepSORT: ******** Finished processing {video_path}: {len(frames)} frames in {end_t:.2f}s")
+        print(f"[DeepSORT]: ******** Finished processing {video_path}: {len(frames)} frames in {end_t:.2f}s")
 
-    print("DeepSORT: Tracking completed")
+    print("[DeepSORT]: Tracking completed")
     tracking_results_queue.put(None)
 
 def show_tracking_data(global_track_ids: dict, interval = 5):        
@@ -589,7 +591,7 @@ def extract_frame_from_video(chunk_path, frame_id):
         raise ValueError(f"Could not read frame {frame_id} from {chunk_path}")
     return frame
 
-def visualize_tracking_data(visualization_queue: queue.Queue):
+def visualize_tracking_data(visualization_queue: queue.Queue, tracker_dim: tuple = (700, 450)):
     writers = {}
     caps = {}
     try:
@@ -609,9 +611,11 @@ def visualize_tracking_data(visualization_queue: queue.Queue):
                     caps[chunk_path] = cap
 
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+                # resize frame if needed
                 ret, frame = cap.read()
+                frame = cv2.resize(frame, tracker_dim)
                 if not ret:
-                    print(f"Visualizer: Failed to read frame {frame_id} from {chunk_path}")
+                    print(f"[Visualizer]: Failed to read frame {frame_id} from {chunk_path}")
                     continue
 
                 video_src = chunk_path.split(".")[0]
@@ -627,9 +631,13 @@ def visualize_tracking_data(visualization_queue: queue.Queue):
                 for bbox, local_id in zip(frame_data["bboxes"], frame_data["track_ids"]):
                     global_id = local_to_global.get(local_id, local_id)
                     x1, y1, x2, y2 = map(int, bbox)
+                    center_x = int((x1 + x2) / 2)
+                    center_y = int((y1 + y2) / 2)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(frame, f"GID {global_id}", (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+                    # Put text at the center of the box
+                    cv2.putText(frame, f"GID {global_id}", (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+                    # Put frame ID at top-left corner
+                    cv2.putText(frame, f"F {frame_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
                 writer_obj.write(frame)
     finally:
@@ -642,7 +650,7 @@ def visualize_tracking_data(visualization_queue: queue.Queue):
         for writer_obj, out_path in writers.values():
             try:
                 writer_obj.release()
-                print(f"[Visualizer] Finished {out_path}")
+                # print(f"[Visualizer] Finished {out_path}")
             except Exception:
                 pass
             
@@ -675,24 +683,31 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
             store = True
 
             global_track_id = None 
-            
+
             if search_results:
                 hit = search_results[0]
 
                 sim_score = hit["distance"]
+                metadata = hit["entity"]["metadata"]
+               
                 if sim_score > SIM_SCORE_THRESHOLD:
                     is_new_track = False
-                    metadata = hit["entity"]["metadata"]
                     global_track_id = metadata.get("global_track_id", global_track_id)
                     if sim_score > TOO_SIMILAR_THRESHOLD:
                         store = False
+                
+                if abs(sim_score - SIM_SCORE_THRESHOLD) <= AMBIGUITY_MARGIN:
+                    # print(f"Ambiguous match for local ID {identities[i]}: sim_score={sim_score}, frame_id={frame_id}")
+                    # Check if local track id matches
+                    if metadata.get("local_track_id", -1) != (identities[i] if i < len(identities) else -1):
+                        is_new_track = True
+                        global_track_id = None
 
             if store:
                 # Create new if it couldn't find an existing one
                 if not global_track_id:
                     global_track_id = f"person_{uuid.uuid4().hex}"
-        
-                # print(f"ReID: Storing embedding for local ID {identities[i] if i < len(identities) else -1} as global ID {global_track_id}, frame_id: {frame_id} Sim Score: {sim_score if search_results else 'N/A'}")
+
                 metadata = {
                     "local_track_id": identities[i] if i < len(identities) else -1,
                     "global_track_id": global_track_id,

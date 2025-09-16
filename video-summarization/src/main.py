@@ -102,7 +102,7 @@ if __name__ == '__main__':
     # Video files or RTSP streams
     videos = {
         "video_1": args.video_file,
-        # "video_2":
+        # "video_2": 
     }
     
     # Initialize Queues
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     
     futures = []
     with ThreadPoolExecutor() as pool:
-        print("Main: Starting RTSP camera streamer")
+        print("[Main]: Starting RTSP camera streamer")
         for video_id, video in videos.items():
             futures.append(pool.submit(
                 generate_chunks,
@@ -129,11 +129,11 @@ if __name__ == '__main__':
                 chunking_mechanism
             ))
  
-        print("Main: Getting sampled frames")    
+        print("[Main]: Getting sampled frames")    
         sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
                                     resolution=args.resolution)
         
-        print("Main: Starting frame ingestion into Milvus")
+        print("[Main]: Starting frame ingestion into Milvus")
         milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager, ov_blip_embedder)
 
         reid_futures = []
@@ -142,9 +142,9 @@ if __name__ == '__main__':
         generate_logs_future = None
         process_logs_future = None
         if run_reid:
-            print("Main: Running Re-ID and Tracking")
+            print("[Main]: Running Re-ID and Tracking")
             # Start DeepSORT tracking workers for each video source
-            print("Main: Starting DeepSORT tracking workers")
+            print("[Main]: Starting DeepSORT tracking workers")
 
             for video_id, video in videos.items():
                 tracking_futures.append(pool.submit(
@@ -166,31 +166,31 @@ if __name__ == '__main__':
                 ))
             
             # Process re-id embeddings
-            print("Main: Starting re-id embedding processing")
+            print("[Main]: Starting re-id embedding processing")
 
             for video_id, video in videos.items():
                 reid_futures.append(pool.submit(process_reid_embeddings, tracking_results_queues[video_id], tracking_logs_queue, visualization_queues[video_id], global_track_ids, milvus_manager))
                 if save_reid_videos:
-                    viz_futures.append(pool.submit(visualize_tracking_data, visualization_queues[video_id]))
+                    viz_futures.append(pool.submit(visualize_tracking_data, visualization_queues[video_id], tracker_dim))
 
             # Show tracking data
-            print("Main: Show tracking data")
+            print("[Main]: Show tracking data")
             generate_logs_future = pool.submit(show_tracking_data, global_track_ids)
 
             # Process tracking logs
-            print("Main: Starting tracking logs processing")
+            print("[Main]: Starting tracking logs processing")
             process_logs_future = pool.submit(process_tracking_logs, tracking_logs_queue, milvus_manager, ov_blip_embedder)
 
         if run_vlm:
-            print("Main: Starting chunk summary generation")
+            print("[Main]: Starting chunk summary generation")
             cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled)
 
-            print("Main: Starting chunk summary ingestion into Milvus")
+            print("[Main]: Starting chunk summary ingestion into Milvus")
             milvus_summaries_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager, ov_blip_embedder)       
             
             # Summarize the full video, using the subsections summaries from each chunk
             # Post an HTTP request to OVMS for summary merger (shown below)
-            print("Main: Starting chunk summary merger")
+            print("[Main]: Starting chunk summary merger")
             merge_future = pool.submit(send_summary_request, merger_queue)
 
         for future in futures:
@@ -228,4 +228,4 @@ if __name__ == '__main__':
         if process_logs_future:
             process_logs_future.result()
 
-        print("Main: All tasks completed")
+        print("[Main]: All tasks completed")
