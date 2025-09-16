@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 import random
 import subprocess
@@ -33,7 +33,7 @@ OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
 SIM_SCORE_THRESHOLD = float(os.environ.get("REID_SIM_SCORE_THRESHOLD", 0.85))
 TOO_SIMILAR_THRESHOLD = float(os.environ.get("TOO_SIMILAR_THRESHOLD", 0.95))
-AMBIGUITY_MARGIN = float(os.environ.get("AMBIGUITY_MARGIN", 0.02))
+AMBIGUITY_MARGIN = float(os.environ.get("AMBIGUITY_MARGIN", 0.15))
 PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 1))
 
 global_track_locks = defaultdict(threading.Lock)
@@ -628,16 +628,21 @@ def visualize_tracking_data(visualization_queue: queue.Queue, tracker_dim: tuple
                     writers[video_src] = (writer, out_path)
 
                 writer_obj, out_path = writers[video_src]
+                
+                uniq_ppl = set()
                 for bbox, local_id in zip(frame_data["bboxes"], frame_data["track_ids"]):
-                    global_id = local_to_global.get(local_id, local_id)
+                    global_id = local_to_global.get(local_id, local_id)                    
                     x1, y1, x2, y2 = map(int, bbox)
+                    
                     center_x = int((x1 + x2) / 2)
                     center_y = int((y1 + y2) / 2)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     # Put text at the center of the box
                     cv2.putText(frame, f"GID {global_id}", (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-                    # Put frame ID at top-left corner
                     cv2.putText(frame, f"F {frame_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    
+                    uniq_ppl.add(global_id)
+                    cv2.putText(frame, f"Unique IDs: {len(uniq_ppl)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
                 writer_obj.write(frame)
     finally:
@@ -697,11 +702,15 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                         store = False
                 
                 if abs(sim_score - SIM_SCORE_THRESHOLD) <= AMBIGUITY_MARGIN:
-                    # print(f"Ambiguous match for local ID {identities[i]}: sim_score={sim_score}, frame_id={frame_id}")
+                    is_new_track = False
+                    store = True
+                    global_track_id = metadata.get("global_track_id", global_track_id)
+                    
                     # Check if local track id matches
                     if metadata.get("local_track_id", -1) != (identities[i] if i < len(identities) else -1):
                         is_new_track = True
                         global_track_id = None
+                        # print(f"Due to ambiguity, treating as new track for local ID {identities[i]} at frame {frame_id}")
 
             if store:
                 # Create new if it couldn't find an existing one
