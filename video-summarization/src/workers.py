@@ -701,7 +701,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                     if sim_score > TOO_SIMILAR_THRESHOLD:
                         store = False
                 
-                if abs(sim_score - SIM_SCORE_THRESHOLD) <= AMBIGUITY_MARGIN:
+                '''if abs(sim_score - SIM_SCORE_THRESHOLD) <= AMBIGUITY_MARGIN:
                     is_new_track = False
                     store = True
                     global_track_id = metadata.get("global_track_id", global_track_id)
@@ -710,7 +710,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                     if metadata.get("local_track_id", -1) != (identities[i] if i < len(identities) else -1):
                         is_new_track = True
                         global_track_id = None
-                        # print(f"Due to ambiguity, treating as new track for local ID {identities[i]} at frame {frame_id}")
+                        # print(f"Due to ambiguity, treating as new track for local ID {identities[i]} at frame {frame_id}")'''
 
             if store:
                 # Create new if it couldn't find an existing one
@@ -803,4 +803,5 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
         visualization_queue.put(viz_batch)
         # print(f"ReID: Logged event for track ID {track_id}")
         # print(f"------------Processed {len(frame_batch)} batches for REID--------------")
+
 
