@@ -642,7 +642,7 @@ def visualize_tracking_data(visualization_queue: queue.Queue, tracker_dim: tuple
                     cv2.putText(frame, f"F {frame_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                     
                     uniq_ppl.add(global_id)
-                    cv2.putText(frame, f"Unique IDs: {len(uniq_ppl)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                cv2.putText(frame, f"Unique IDs: {len(uniq_ppl)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
                 writer_obj.write(frame)
     finally:
@@ -803,3 +803,4 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
         visualization_queue.put(viz_batch)
         # print(f"ReID: Logged event for track ID {track_id}")
         # print(f"------------Processed {len(frame_batch)} batches for REID--------------")
+
