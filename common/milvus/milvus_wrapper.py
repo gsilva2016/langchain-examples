@@ -185,7 +185,7 @@ class MilvusManager:
                 partition_name=partition_name
             )
 
-            return {"status": "success", "total_chunks": resp["upsert_count"]}
+            return {"status": "success", "total_chunks": resp["upsert_count"], "pks": resp["primary_keys"]}
         except Exception as e:
             print(f"Error upserting data into {collection_name}: {e}")
             return {"status": "error", "message": str(e)}

@@ -741,6 +741,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
     return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
 
 def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):  
+    last_event_time = defaultdict(lambda: 0)
     while True:
         try:
             frame_batch = tracking_results_queue.get()
@@ -772,19 +773,30 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         if idx < len(global_track_sources):
                             global_track_table[global_track_id]["seen_in"].add(global_track_sources[idx])
 
-                    # Emit an event to store for logging purposes, for now I am embedding 'description' using BLIP
-                    event = {
-                        "global_track_id": global_track_id,
-                        "event_type": "detected",
-                        "first_detected": global_track_table[global_track_id]["first_detected"],
-                        "event_creation_timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-                        "is_assigned": global_track_table[global_track_id]["is_assigned"],
-                        "last_update": global_track_table[global_track_id]["last_update"],
-                        "seen_in": list(global_track_table[global_track_id]["seen_in"]),
-                        "description": f"Tracking event for ID {global_track_id}: assigned={global_track_table[global_track_id]['is_assigned']}, last_update={global_track_table[global_track_id]['last_update']}, seen in {list(global_track_table[global_track_id]['seen_in'])}"
-                    }
+                    current_time = time.time()
+                    is_new_track = is_new_tracks[idx] if idx < len(is_new_tracks) else False
+                    should_emit_event = False
                     
-                    tracking_logs_q.put(event)
+                    if is_new_track:
+                        should_emit_event = True
+                    elif current_time - last_event_time[global_track_id] >= 1.0:
+                        should_emit_event = True
+                        
+                    # Emit an event to store for logging purposes, for now I am embedding 'description' using BLIP
+                    if should_emit_event:
+                        last_event_time[global_track_id] = current_time
+                        event = {
+                            "global_track_id": global_track_id,
+                            "event_type": "detected",
+                            "first_detected": global_track_table[global_track_id]["first_detected"],
+                            "event_creation_timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                            "is_assigned": global_track_table[global_track_id]["is_assigned"],
+                            "last_update": global_track_table[global_track_id]["last_update"],
+                            "seen_in": list(global_track_table[global_track_id]["seen_in"]),
+                            "description": f"Tracking event for ID {global_track_id}: assigned={global_track_table[global_track_id]['is_assigned']}, last_update={global_track_table[global_track_id]['last_update']}, seen in {list(global_track_table[global_track_id]['seen_in'])}"
+                        }
+                    
+                        tracking_logs_q.put(event)
             
             local_global_mapping = {
                 local: global_id
