@@ -703,7 +703,6 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                 if SIM_SCORE_THRESHOLD - AMBIGUITY_MARGIN <= sim_score < SIM_SCORE_THRESHOLD:
                     continue
 
-
             if store:
                 # Create new if it couldn't find an existing one
                 if not global_track_id:
@@ -795,3 +794,5 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
         visualization_queue.put(viz_batch)
         # print(f"ReID: Logged event for track ID {track_id}")
         # print(f"------------Processed {len(frame_batch)} batches for REID--------------")
+
+
