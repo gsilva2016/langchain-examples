@@ -102,7 +102,8 @@ if __name__ == '__main__':
     # Video files or RTSP streams
     videos = {
         "video_1": args.video_file,
-        # "video_2": 
+        # "video_2": "/home/skk/expts/videos/z_vids/bb_chunk_3min.mp4",
+        # "video_3": "/home/skk/expts/videos/z_vids/bb_chunk_3min.mp4"
     }
     
     # Initialize Queues
@@ -133,8 +134,9 @@ if __name__ == '__main__':
         sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
                                     resolution=args.resolution)
         
-        print("[Main]: Starting frame ingestion into Milvus")
-        milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager, ov_blip_embedder)
+        if run_vlm:
+            print("[Main]: Starting frame ingestion into Milvus")
+            milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager, ov_blip_embedder)
 
         reid_futures = []
         viz_futures = []
@@ -162,7 +164,7 @@ if __name__ == '__main__':
                     tracker_n_init,
                     tracker_dim,
                     det_thresh=tracker_det_thresh,
-                    write_video=False
+                    write_video=True
                 ))
             
             # Process re-id embeddings
@@ -202,9 +204,9 @@ if __name__ == '__main__':
             tracking_chunk_queues[video_id].put(None)
                 
         sample_future.result()
-        milvus_frames_future.result()
         
         if run_vlm:
+            milvus_frames_future.result()
             cs_future.result()
             milvus_summaries_future.result()
             merge_future.result()

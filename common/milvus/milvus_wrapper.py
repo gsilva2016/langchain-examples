@@ -28,8 +28,7 @@ class MilvusManager:
         Get a thread-local MilvusClient instance
         """
         if not hasattr(self._local, "client"):
-            self._local.client = MilvusClient(uri=f"http://{self.milvus_host}:{self.milvus_port}", db_name=self.milvus_dbname
-                                              )
+            self._local.client = MilvusClient(uri=f"http://{self.milvus_host}:{self.milvus_port}", db_name=self.milvus_dbname)
         return self._local.client
 
     def create_collection(self, collection_name: str, dim: int, overwrite=False):
@@ -119,7 +118,7 @@ class MilvusManager:
             print(f"Error inserting data into {collection_name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    def search(self, collection_name: str, query_vector: List[list] | list,
+    def search(self, collection_name: str, query_vector: List[list] | list, output_fields = ["metadata", "vector"],
                limit: int = 1, filter: str = "", partition_names: list = None):
         """
         Search for similar vectors in the collection
@@ -141,7 +140,7 @@ class MilvusManager:
             results = client.search(
                 collection_name=collection_name,
                 data=query_vector,
-                output_fields=["metadata", "vector"],
+                output_fields=output_fields,
                 limit=limit,
                 filter=filter,
                 search_params=search_params,
@@ -152,8 +151,47 @@ class MilvusManager:
         except Exception as e:
             print(f"Error searching in {collection_name}: {e}")
             return {"status": "error", "message": str(e)}
+    
+    def upsert_data(self, collection_name: str, pks: list, vectors: list, metadatas: list, partition_name: str = None):
+        """
+        Upsert data into the collection
+        """
+        client = self._get_client()
+        try:
+            if not (len(pks) == len(vectors) == len(metadatas)):
+                raise ValueError("pks, vectors, and metadatas length must match.")
+            
+            if not client.has_collection(collection_name):
+                raise ValueError(f"Collection {collection_name} does not exist.")
 
-    def query(self, collection_name: str, filter: str = "", limit: int = 100, partition_names: list = None):
+            if partition_name is None:
+                partition_name = self.generate_partition_name(prefix=collection_name)
+
+            if partition_name:
+                self._ensure_partition(collection_name, partition_name)
+
+            records = []
+            for pk, vector, metadata in zip(pks, vectors, metadatas):
+                record = {
+                    "pk": pk,
+                    "vector": vector,
+                    "metadata": metadata
+                }
+                records.append(record)
+
+            resp = client.upsert(
+                collection_name=collection_name,
+                data=records,
+                partition_name=partition_name
+            )
+
+            return {"status": "success", "total_chunks": resp["upsert_count"]}
+        except Exception as e:
+            print(f"Error upserting data into {collection_name}: {e}")
+            return {"status": "error", "message": str(e)}
+            
+
+    def query(self, collection_name: str, filter: str = "", limit: int = 100, output_fields = ["pk", "metadata"], partition_names: list = None):
         """
         Query the collection with an expression
         """
@@ -168,12 +206,13 @@ class MilvusManager:
                 if not partition_names:
                     print(f"None of the specified partitions exist in {collection_name}.")
                     partition_names = None
-
+            
             results = client.query(
                 collection_name=collection_name,
                 filter=filter,
-                output_fields=["pk", "metadata"],
+                output_fields=output_fields,
                 limit=limit,
+                consistency_level="Strong",
                 partition_names=partition_names
             )
             return results

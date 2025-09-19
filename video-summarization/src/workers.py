@@ -1,7 +1,5 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, timedelta
-import random
-import subprocess
 import threading
 import uuid
 import cv2
@@ -31,7 +29,7 @@ import time
 load_dotenv()
 OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
 VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
-SIM_SCORE_THRESHOLD = float(os.environ.get("REID_SIM_SCORE_THRESHOLD", 0.85))
+SIM_SCORE_THRESHOLD = float(os.environ.get("REID_SIM_SCORE_THRESHOLD", 0.65))
 TOO_SIMILAR_THRESHOLD = float(os.environ.get("TOO_SIMILAR_THRESHOLD", 0.95))
 AMBIGUITY_MARGIN = float(os.environ.get("AMBIGUITY_MARGIN", 0.15))
 PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 1))
@@ -580,7 +578,7 @@ def process_tracking_logs(tracking_logs_q: queue.Queue, milvus_manager: MilvusMa
         
         except Exception as e:
             print( f"Error processing tracking logs: {e}")
-
+            
 def extract_frame_from_video(chunk_path, frame_id):
     # Use openCV to extract the specific frame
     cap = cv2.VideoCapture(chunk_path)
@@ -642,7 +640,7 @@ def visualize_tracking_data(visualization_queue: queue.Queue, tracker_dim: tuple
                     cv2.putText(frame, f"F {frame_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                     
                     uniq_ppl.add(global_id)
-                    cv2.putText(frame, f"Unique IDs: {len(uniq_ppl)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                cv2.putText(frame, f"Unique IDs: {len(uniq_ppl)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
                 writer_obj.write(frame)
     finally:
@@ -658,7 +656,7 @@ def visualize_tracking_data(visualization_queue: queue.Queue, tracker_dim: tuple
                 # print(f"[Visualizer] Finished {out_path}")
             except Exception:
                 pass
-            
+
 def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):
     batch_embeddings = []
     batch_metadatas = []
@@ -701,21 +699,15 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                     if sim_score > TOO_SIMILAR_THRESHOLD:
                         store = False
                 
-                if abs(sim_score - SIM_SCORE_THRESHOLD) <= AMBIGUITY_MARGIN:
-                    is_new_track = False
-                    store = True
-                    global_track_id = metadata.get("global_track_id", global_track_id)
-                    
-                    # Check if local track id matches
-                    if metadata.get("local_track_id", -1) != (identities[i] if i < len(identities) else -1):
-                        is_new_track = True
-                        global_track_id = None
-                        # print(f"Due to ambiguity, treating as new track for local ID {identities[i]} at frame {frame_id}")
+                # if abs(sim_score - SIM_SCORE_THRESHOLD) <= AMBIGUITY_MARGIN:
+                if SIM_SCORE_THRESHOLD - AMBIGUITY_MARGIN <= sim_score < SIM_SCORE_THRESHOLD:
+                    continue
+
 
             if store:
                 # Create new if it couldn't find an existing one
                 if not global_track_id:
-                    global_track_id = f"person_{uuid.uuid4().hex}"
+                    global_track_id = f"{uuid.uuid4().hex}_person"
 
                 metadata = {
                     "local_track_id": identities[i] if i < len(identities) else -1,
@@ -749,7 +741,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
 
     return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
 
-def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):
+def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):  
     while True:
         try:
             frame_batch = tracking_results_queue.get()
@@ -792,7 +784,7 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         "seen_in": list(global_track_table[global_track_id]["seen_in"]),
                         "description": f"Tracking event for ID {global_track_id}: assigned={global_track_table[global_track_id]['is_assigned']}, last_update={global_track_table[global_track_id]['last_update']}, seen in {list(global_track_table[global_track_id]['seen_in'])}"
                     }
-
+                    
                     tracking_logs_q.put(event)
             
             local_global_mapping = {

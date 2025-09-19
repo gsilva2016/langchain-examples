@@ -32,3 +32,4 @@ tracker_models/*
 output_chunks/
 *report*
 out*.txt
+bk/
