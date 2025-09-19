@@ -102,8 +102,7 @@ if __name__ == '__main__':
     # Video files or RTSP streams
     videos = {
         "video_1": args.video_file,
-        # "video_2": "/home/skk/expts/videos/z_vids/bb_chunk_3min.mp4",
-        # "video_3": "/home/skk/expts/videos/z_vids/bb_chunk_3min.mp4"
+        # "video_2": 
     }
     
     # Initialize Queues
@@ -164,7 +163,7 @@ if __name__ == '__main__':
                     tracker_n_init,
                     tracker_dim,
                     det_thresh=tracker_det_thresh,
-                    write_video=True
+                    write_video=False
                 ))
             
             # Process re-id embeddings
