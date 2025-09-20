@@ -33,6 +33,7 @@ SIM_SCORE_THRESHOLD = float(os.environ.get("REID_SIM_SCORE_THRESHOLD", 0.65))
 TOO_SIMILAR_THRESHOLD = float(os.environ.get("TOO_SIMILAR_THRESHOLD", 0.95))
 AMBIGUITY_MARGIN = float(os.environ.get("AMBIGUITY_MARGIN", 0.15))
 PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 1))
+TRACKING_LOGS_GENERATION_TIME_SECS = float(os.environ.get("TRACKING_LOGS_GENERATION_TIME_SECS", 1.0))
 
 global_track_locks = defaultdict(threading.Lock)
 global_assignment_lock = threading.Lock()
@@ -779,7 +780,7 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                     
                     if is_new_track:
                         should_emit_event = True
-                    elif current_time - last_event_time[global_track_id] >= 1.0:
+                    elif current_time - last_event_time[global_track_id] >= TRACKING_LOGS_GENERATION_TIME_SECS:
                         should_emit_event = True
                         
                     # Emit an event to store for logging purposes, for now I am embedding 'description' using BLIP
