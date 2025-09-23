@@ -14,3 +14,5 @@ nncf
 huggingface_hub
 openvino-genai==2025.1.0
 opencv-python
+google-adk==1.5.0
+litellm
