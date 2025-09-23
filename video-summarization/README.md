@@ -385,3 +385,11 @@ To stop, start or delete the DB:
 3. You can stop Milvus using the following command: `bash standalone_embed.sh stop`
  
 4. You can delete Milvus data using the following command: `bash standalone_embed.sh delete`
+
+## Run Idle Agent
+
+To enable Idle Agent flow, which periodically updates the idle status and stores it along with a short summary in MilvusDB, run the following command:
+```
+./run_demo.sh --run_agent_monitor
+```
+Note: Ensure that MilvusDB is properly set up and contains the necesseray data before running the agent.
