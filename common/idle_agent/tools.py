@@ -53,6 +53,7 @@ def update_idle_status(tool_context: ToolContext) -> dict:
                                     vectors=vectors,
                                     metadatas=metadatas)
 
-        return {"status": "Agent updated db succusfully", "result": result}
+        summary = f"Agent updated DB successfully with {len(pks)} entries."
+        return summary
     except Exception as ex:
-        return {"status": "Agent did not updat db succusfully", "error": str(ex)}
+        return f"Agent failed to update DB: {str(ex)}"

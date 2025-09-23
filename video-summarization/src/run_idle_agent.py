@@ -13,6 +13,7 @@ import os
 
 async def adk_runner(args, last_processed_ts):
     milvus_manager = MilvusManager()    
+    print("last processed time:", last_processed_ts)
     filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_ts}"'
     collection_data = milvus_manager.query(
         collection_name=args.collection_name,
@@ -20,6 +21,9 @@ async def adk_runner(args, last_processed_ts):
         limit=1000,
         output_fields=["pk", "metadata", "vector"]
     )
+    if not collection_data:
+        print("No data found in the collection. Skipping agent invocation.")
+        return [], last_processed_ts  
     session_service = InMemorySessionService()
     user_id = "user1"
     session_id = "session1"
@@ -44,15 +48,19 @@ async def adk_runner(args, last_processed_ts):
    
     user_input = types.Content(
         role='user',
-        parts=[types.Part(text="run update_idle_status and return updated data")]
+        parts=[types.Part(text="use idle_status_tool to store idle_status and summary in Milvus databas")]
     )
    
     
     response_events = runner.run_async(user_id=user_id, session_id=session_id, new_message=user_input)
     
     async for event in response_events:
-        print("Agent output:", event.content.parts[0].text)
-    
+        print("Agent output:", event.content.parts[0].text if event.content else None)
+        if event.is_final_response():
+            final_answer = event.content.parts[0].text if event.content else "No final response content"
+            print("Final agent response:", final_answer)
+            break
+            
     end_time = time.monotonic()
     elapsed_seconds = end_time - start_time
     minutes = int(elapsed_seconds // 60)
