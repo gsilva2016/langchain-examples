@@ -34,6 +34,7 @@ TOO_SIMILAR_THRESHOLD = float(os.environ.get("TOO_SIMILAR_THRESHOLD", 0.95))
 AMBIGUITY_MARGIN = float(os.environ.get("AMBIGUITY_MARGIN", 0.15))
 PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 1))
 TRACKING_LOGS_GENERATION_TIME_SECS = float(os.environ.get("TRACKING_LOGS_GENERATION_TIME_SECS", 1.0))
+MAX_EVENTS_BATCH = int(os.environ.get("MAX_EVENTS_BATCH", 10))
 
 global_track_locks = defaultdict(threading.Lock)
 global_assignment_lock = threading.Lock()
@@ -551,34 +552,44 @@ def show_tracking_data(global_track_ids: dict, interval = 5):
         print("-----------------------------------------------------------------------------------------------------")
 
 def process_tracking_logs(tracking_logs_q: queue.Queue, milvus_manager: MilvusManager, ov_blip_embedder: OpenVINOBlipEmbeddings, collection_name: str = "tracking_logs"):
+    last_event_time = defaultdict(lambda: 0)
+    events = []
+    wait_interval = 0.5  
+    last_flush = time.time()
+
     while True:
         try:
-            events = []
-            max_events = 10
-            last = False
-            while len(events) < max_events:
-                try:
-                    event = tracking_logs_q.get_nowait()
-                    if event is None:
-                        last = True
-                        break
-                    events.append(event)
-                except queue.Empty:
-                    break
-            
-            if events:
-                texts = [event["description"] for event in events]
-                embeddings = ov_blip_embedder.embed_documents(texts)
-                response = milvus_manager.insert_data(collection_name=collection_name, 
-                                                    vectors=embeddings, 
-                                                    metadatas=events)
-                # print(f"Event Logging Ingestion Response: {response}")
-
-            if last:
+            event = tracking_logs_q.get(timeout=wait_interval)
+            if event is None:
                 break
-        
-        except Exception as e:
-            print( f"Error processing tracking logs: {e}")
+
+            gid = event["global_track_id"]
+            now = time.time()
+
+            # Process event only if greater than TRACKING_LOGS_GENERATION_TIME_SECS, prevents too many events
+            if now - last_event_time[gid] >= TRACKING_LOGS_GENERATION_TIME_SECS:
+                last_event_time[gid] = now
+                events.append(event)
+
+        except queue.Empty:
+            pass
+
+        # Now insert into Milvus if wait_interval has passed or we have atleast max_events
+        if events and (len(events) >= MAX_EVENTS_BATCH or time.time() - last_flush >= wait_interval):
+            try:
+                texts = [e["description"] for e in events]
+                embeddings = ov_blip_embedder.embed_documents(texts)
+                milvus_manager.insert_data(
+                    collection_name=collection_name,
+                    vectors=embeddings,
+                    metadatas=events
+                )
+                # print(f"[TrackingLogs]: Batch inserted {len(events)} events to Milvus")
+            except Exception as e:
+                print(f"[TrackingLogs]: Failed insert: {e}")
+            finally:
+                events = []
+                last_flush = time.time()
             
 def extract_frame_from_video(chunk_path, frame_id):
     # Use openCV to extract the specific frame
@@ -693,7 +704,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
 
                 sim_score = hit["distance"]
                 metadata = hit["entity"]["metadata"]
-               
+                
                 if sim_score > SIM_SCORE_THRESHOLD:
                     is_new_track = False
                     global_track_id = metadata.get("global_track_id", global_track_id)
@@ -733,7 +744,6 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                 
         # Batch insert 
         if batch_embeddings and batch_metadatas:
-            # with milvus_lock:
             response = milvus_manager.insert_data(collection_name=collection_name,
                                                 vectors=batch_embeddings,
                                                 metadatas=batch_metadatas, partition_name=partition_current)
@@ -742,24 +752,19 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
     return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
 
 def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):  
-    last_event_time = defaultdict(lambda: 0)
     while True:
         try:
             frame_batch = tracking_results_queue.get()
-             # End if none
             if frame_batch is None:
                 visualization_queue.put(None)
                 break
-
         except queue.Empty:
             continue
         
         viz_batch = []
         for frame in frame_batch:
             global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources = insert_reid_embeddings(frame, milvus_manager, collection_name)
-            # new_global_track_ids = [assigned_id for assigned_id, is_new_track in zip(global_assigned_ids, is_new_tracks) if is_new_track]
 
-            # Update global track ids with newly assigned track IDs
             for idx, global_track_id in enumerate(global_assigned_ids):
                 with global_track_locks[global_track_id]:
                     if global_track_id not in global_track_table:
@@ -774,36 +779,28 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         if idx < len(global_track_sources):
                             global_track_table[global_track_id]["seen_in"].add(global_track_sources[idx])
 
-                    current_time = time.time()
-                    is_new_track = is_new_tracks[idx] if idx < len(is_new_tracks) else False
-                    should_emit_event = False
-                    
-                    if is_new_track:
-                        should_emit_event = True
-                    elif current_time - last_event_time[global_track_id] >= TRACKING_LOGS_GENERATION_TIME_SECS:
-                        should_emit_event = True
-                        
-                    # Emit an event to store for logging purposes, for now I am embedding 'description' using BLIP
-                    if should_emit_event:
-                        last_event_time[global_track_id] = current_time
-                        event = {
-                            "global_track_id": global_track_id,
-                            "event_type": "detected",
-                            "first_detected": global_track_table[global_track_id]["first_detected"],
-                            "event_creation_timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-                            "is_assigned": global_track_table[global_track_id]["is_assigned"],
-                            "last_update": global_track_table[global_track_id]["last_update"],
-                            "seen_in": list(global_track_table[global_track_id]["seen_in"]),
-                            "description": f"Tracking event for ID {global_track_id}: assigned={global_track_table[global_track_id]['is_assigned']}, last_update={global_track_table[global_track_id]['last_update']}, seen in {list(global_track_table[global_track_id]['seen_in'])}"
-                        }
-                    
-                        tracking_logs_q.put(event)
-            
-            local_global_mapping = {
-                local: global_id
-                for local, global_id in zip(local_track_ids, global_assigned_ids)
-            }
+                    snapshot = dict(global_track_table[global_track_id])
+
+                event = {
+                    "global_track_id": global_track_id,
+                    "event_type": "detected",
+                    "first_detected": snapshot["first_detected"],
+                    "event_creation_timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "is_assigned": snapshot["is_assigned"],
+                    "last_update": snapshot["last_update"],
+                    "seen_in": list(snapshot["seen_in"]),
+                    "description": (
+                        f"Tracking event for ID {global_track_id}: "
+                        f"assigned={snapshot['is_assigned']}, "
+                        f"last_update={snapshot['last_update']}, "
+                        f"seen in {list(snapshot['seen_in'])}"
+                    )
+                }
+                tracking_logs_q.put(event)
+
+            local_global_mapping = {local: global_id for local, global_id in zip(local_track_ids, global_assigned_ids)}
             viz_batch.append((frame, local_global_mapping))
+
         visualization_queue.put(viz_batch)
         # print(f"ReID: Logged event for track ID {track_id}")
         # print(f"------------Processed {len(frame_batch)} batches for REID--------------")

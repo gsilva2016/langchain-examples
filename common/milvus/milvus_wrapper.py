@@ -133,7 +133,7 @@ class MilvusManager:
                 existing_partitions = client.list_partitions(collection_name)
                 partition_names = [p for p in partition_names if p in existing_partitions]
                 if not partition_names:
-                    print(f"None of the specified partitions exist in {collection_name}.")
+                    # print(f"None of the specified partitions exist in {collection_name}.")
                     partition_names = None
 
             results = client.search(
