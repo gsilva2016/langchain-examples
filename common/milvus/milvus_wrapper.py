@@ -47,8 +47,7 @@ class MilvusManager:
                     return
 
             schema = client.create_schema(enable_dynamic_field=True)
-            schema.add_field(field_name="pk", datatype=DataType.VARCHAR,
-                             max_length=64, is_primary=True, auto_id=True)
+            schema.add_field(field_name="pk", datatype=DataType.INT64, is_primary=True, auto_id=True)
             schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=dim)
             schema.add_field(field_name="metadata", datatype=DataType.JSON)
 

@@ -86,7 +86,7 @@ if __name__ == '__main__':
         milvus_manager.create_collection(
             collection_name=collection_name,
             dim=dim,
-            overwrite=True  # overwrite = True if collection already exists and you want to delete
+            # overwrite=True  # overwrite = True if collection already exists and you want to delete
         )
         
     # Initialize Embedding Model
