@@ -18,7 +18,7 @@ fi
 
 hf auth login --token $HUGGINGFACE_TOKEN
 
-if [ "$1" == "--skip" ] || [ "$2" == "--skip" ] || [ "$1" == "--run_agent_monitor" ] || [ "$2" == "--run_agent_monitor" ]; then
+if [ "$1" == "--skip" ] || [ "$2" == "--skip" ] || [ "$1" == "--run_agent_monitor" ] || [ "$2" == "--run_agent_monitor" ] || [ "$1" == "--run_agent_track" ] || [ "$2" == "--run_agent_track" ]; then
 	echo "Skipping sample video download"
 else
     # Download sample video
@@ -59,6 +59,12 @@ elif [ "$1" == "--run_agent_monitor" ]; then
 	sleep 60
 	echo "Running Periodically idle detection agent"
     PYTHONPATH=$PROJECT_ROOT_DIR python src/run_idle_agent.py --milvus_uri "$MILVUS_HOST" --milvus_port "$MILVUS_PORT" --milvus_dbname "$MILVUS_DBNAME" --collection_name "$TRACKING_COLLECTION_NAME" 
+elif [ "$1" == "--run_track_agent" ]; then
+    bash run-vllm-cpu.sh
+	echo "Waiting for vllm to warm up..."
+	sleep 60
+	echo "Running Periodically Price Alert Detection agent"
+    PYTHONPATH=$PROJECT_ROOT_DIR python src/run_track_agent.py --milvus_uri "$MILVUS_HOST" --milvus_port "$MILVUS_PORT" --milvus_dbname "$MILVUS_DBNAME" --collection_name "$TRACKING_COLLECTION_NAME" 
 else
     if [ "$RUN_VLM_PIPELINE" == "TRUE" ]; then
         echo "Running VLM pipeline on video"
