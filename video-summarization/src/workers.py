@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
+import random
 import threading
 import uuid
 import cv2
@@ -537,19 +538,31 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
     print("[DeepSORT]: Tracking completed")
     tracking_results_queue.put(None)
 
-def show_tracking_data(global_track_ids: dict, interval = 5):        
-    while True:
-        time.sleep(interval)
-        print("--------------------------Current state of global track IDs:------------------------------------------")
-        
-        if -1 in global_track_ids:
-            print("End sentinel found in global table. Ending.")
-            break
+def show_tracking_data(global_track_ids: dict, interval = 5):
+    try:        
+        while True:
+            time.sleep(interval)
+            print("--------------------------Current state of global track IDs:------------------------------------------")
+            
+            if -1 in global_track_ids:
+                print("End sentinel found in global table. Ending.")
+                break
 
-        print(f"Total active tracks: {len(global_track_ids)}")
+            print(f"Total active tracks: {len(global_track_ids)}")
+            for track_id, info in global_track_ids.items():
+                print(f"Track ID: {track_id},       Info: {info}")
+                print("****************************")
+            print("-----------------------------------------------------------------------------------------------------")
+    except Exception as e:
+        print(f"[Track Viewer]: Exception: {e}")
+    finally:
+        print("[Track Viewer]: Stopping track viewer.")
+        print(f"Total active tracks: {len(global_track_ids) - 1}")
         for track_id, info in global_track_ids.items():
             print(f"Track ID: {track_id},       Info: {info}")
+            print("****************************")
         print("-----------------------------------------------------------------------------------------------------")
+
 
 def process_tracking_logs(tracking_logs_q: queue.Queue, milvus_manager: MilvusManager, ov_blip_embedder: OpenVINOBlipEmbeddings, collection_name: str = "tracking_logs"):
     last_event_time = defaultdict(lambda: 0)
@@ -714,7 +727,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                 # if abs(sim_score - SIM_SCORE_THRESHOLD) <= AMBIGUITY_MARGIN:
                 if SIM_SCORE_THRESHOLD - AMBIGUITY_MARGIN <= sim_score < SIM_SCORE_THRESHOLD:
                     continue
-
+            
             if store:
                 # Create new if it couldn't find an existing one
                 if not global_track_id:
@@ -747,7 +760,6 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
             response = milvus_manager.insert_data(collection_name=collection_name,
                                                 vectors=batch_embeddings,
                                                 metadatas=batch_metadatas, partition_name=partition_current)
-            # print(f"ReID Batch Ingestion Response for {len(batch_embeddings)} embeddings: {response}")
 
     return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
 
@@ -793,8 +805,9 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         f"Tracking event for ID {global_track_id}: "
                         f"assigned={snapshot['is_assigned']}, "
                         f"last_update={snapshot['last_update']}, "
-                        f"seen in {list(snapshot['seen_in'])}"
-                    )
+                        f"seen in {list(snapshot['seen_in'])}",
+                    ),
+                    "deliveries_count": random.randint(0, 100),
                 }
                 tracking_logs_q.put(event)
 
