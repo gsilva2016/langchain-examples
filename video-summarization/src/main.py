@@ -44,6 +44,8 @@ if __name__ == '__main__':
     run_vlm = os.getenv("RUN_VLM_PIPELINE", "TRUE").upper() == "TRUE"
     run_reid = os.getenv("RUN_REID_PIPELINE", "TRUE").upper() == "TRUE"
     save_reid_videos = os.getenv("SAVE_REID_VIZ_VIDOES", "FALSE").upper() == "TRUE"
+    overwrite_milvus_collections = os.getenv("OVERWRITE_MILVUS_COLLECTION", "FALSE").upper() == "TRUE"
+    print(f"Run VLM Pipeline: {run_vlm}, Run REID Pipeline: {run_reid}, Save REID Videos: {save_reid_videos}, Overwrite Milvus Collections: {overwrite_milvus_collections}")
     
     chunking_mechanism = os.getenv("CHUNKING_MECHANISM", "sliding_window")
     obj_detect_enabled = os.getenv("OBJ_DETECT_ENABLED", "TRUE").upper() == "TRUE"
@@ -86,7 +88,7 @@ if __name__ == '__main__':
         milvus_manager.create_collection(
             collection_name=collection_name,
             dim=dim,
-            # overwrite=True  # overwrite = True if collection already exists and you want to delete
+            overwrite=overwrite_milvus_collections  # overwrite = True if collection already exists and you want to delete, default False
         )
         
     # Initialize Embedding Model
