@@ -491,15 +491,10 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 frame_with_tracks = draw_boxes(frame.copy(), bbox_xyxy, identities)
                 out.write(frame_with_tracks)
             
-            # if i % sample_interval != 0:
-            #     continue
-            
             if identities is None or len(identities) == 0:
                 continue
             
             # Accumulate tracking results for this frame
-            # TODO: Zach: Add condition to avoid DFINE processing in install.sh since not required in this codebase.
-            # if i % sample_interval == 0 and len(identities) > 0:
             tracking_res = {
                 "frame_id": frame_id,
                 "chunk_id": chunk["chunk_id"],

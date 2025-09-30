@@ -1,6 +1,20 @@
-# Summarize Videos Using OpenVINO Model Server, Langchain, and MiniCPM-V-2_6
+# Video Analysis Pipeline using Person Trcking/ReID, Summarization using GenAI and traditional CV techniques
 
-## Installation
+Uses: OpenVINO Model Server, open source/custom Langchain packages, MiniCPM-V-2_6, Llama3.2-3B, DeepSORT/ReID and Milvus.
+
+## Introduction
+
+This repository provides a modular pipeline for video analysis and summarization, combining CV and genAI techniques. The main modules include:
+
+- **Person Tracking & Re-Identification (ReID):** Uses DeepSORT and ReID models to detect, track, and uniquely identify individuals across video frames. Uses Milvus to reconcile across same/multiple inputs.
+- **Summarization:** Employs vision-language models (MiniCPM-V-2_6) and large language models (Llama-3.2-3B) to generate concise, human-readable summaries of video content.
+- **Embedding & Vector Database:** Utilizes BLIP for generating embeddings from text and images, storing them in Milvus for efficient similarity search and retrieval.
+- **Vector Search/Retriever** Enables search and retrieval over ingested video data using both text and image queries.
+- **Model Serving:** Integrates OpenVINO Model Server (OVMS) for efficient model inference and deployment.
+
+Each module can be enabled or disabled independently, allowing flexible experimentation and customization for different video analytics scenarios. (Refer to the [Run Video Pipeline](#run-video-pipeline) section.)
+
+## Installation and .env (environment variable file) Configuration
 
 1. First, follow the steps on the [MiniCPM-V-2_6 HuggingFace Page](https://huggingface.co/openbmb/MiniCPM-V-2_6) to gain
 access to the model. For more information on user access tokens for access to gated models
@@ -9,6 +23,40 @@ see [here](https://huggingface.co/docs/hub/en/security-tokens).
 2. Gain access to [Llama3.2](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) group of models on Hugging Face. 
 
 3. Next, open `.env` file in this current directory. Here you will find all the variables which need to set in order to run the Video Summarizer. Default values have already been set.
+
+4. The tracking/ReID modules require finetuning the DeepSORT configuration parameters as per the input video/camera stream being tested.
+    
+    For the DeepSORT module, TBD here.....
+    
+    For the ReID reconcillation module, please finetune these two values in the .env.
+    
+    ```
+    REID_SIM_SCORE_THRESHOLD=0.67
+    TOO_SIMILAR_THRESHOLD=0.96
+    AMBIGUITY_MARGIN=0.02
+    ```
+
+    For example:
+    
+    REID_SIM_SCORE_THRESHOLD=0.67. 
+    
+    This value will need the most finetuning. 0.67 seems to work well for the standard input video provided in this app. Typical values will range from 0.56 to 0.9. 
+    This value indicates what similarity score threshold value defines if a person detected is a new person or not. 
+    Ex: If Frame 2 with a person returns a similarity score of 0.7, then it means that the person was already seen previously and is not a new person. 
+    If the similarity score is less than 0.67, its a new person detected and their embedding gets stored in Milvus database for future comparisons/references.
+
+    
+    TOO_SIMILAR_THRESHOLD=0.96
+    
+    This value most likely would not need any finetuning and can remain the same. To prevent database bloat and prevent too many similar entries being stored in the vector DB, 
+    this value indicates that if the similarity score is greater than 0.96, then we don't need to store its embedding in the DB since we alrady have an embedding which is representative.
+
+    AMBIGUITY_MARGIN=0.02
+    
+    This value has been put in place to ignore certain embeddings which are ambiguous and very close to the REID_SIM_SCORE_THRESHOLD and sometimes can result in false positive. 
+    A value of 0.02 is interpreted as follows:
+    
+    This skips embeddings whose similarity score is in a "borderline" range. Specifically, if the similarity score is just below the main threshold (SIM_SCORE_THRESHOLD) but within a margin (AMBIGUITY_MARGIN).
 
 ```
 # Hugging Face access token for model access
@@ -104,16 +152,16 @@ Here is a detailed description of the video.
 
 TRACKER_DET_MODEL_PATH="tracker_models/person-detection-0202/FP16/person-detection-0202.xml"
 TRACKER_REID_MODEL_PATH="tracker_models/person-reidentification-retail-0287/FP16/person-reidentification-retail-0287.xml"
-TRACKER_DEVICE="AUTO"
+TRACKER_DEVICE="GPU"
 TRACKER_NN_BUDGET=100
 TRACKER_MAX_COSINE_DISTANCE=0.5
 TRACKER_METRIC_TYPE="cosine"
-TRACKER_MAX_IOU_DISTANCE=0.7
+TRACKER_MAX_IOU_DISTANCE=0.4
 TRACKER_MAX_AGE=100
-TRACKER_N_INIT=1
+TRACKER_N_INIT=45
 TRACKER_WIDTH=700
 TRACKER_HEIGHT=450
-TRACKER_DET_THRESH=0.5
+TRACKER_DET_THRESH=0.7
 
 ####### Parameters for Milvus
 
@@ -123,14 +171,11 @@ MILVUS_DBNAME="default"
 VIDEO_COLLECTION_NAME="video_chunks"
 REID_COLLECTION_NAME="reid_data"
 TRACKING_COLLECTION_NAME="tracking_logs"
-REID_SIM_SCORE_THRESHOLD=0.7
-TOO_SIMILAR_THRESHOLD=0.99
+REID_SIM_SCORE_THRESHOLD=0.67
+TOO_SIMILAR_THRESHOLD=0.96
+AMBIGUITY_MARGIN=0.02
 PARTITION_CREATION_INTERVAL=1 # in hours
-
-####### Parameters for reporting agent
-
-# Time in seconds
-REPORT_GENERATION_TIME_SECS=10  
+TRACKING_LOGS_GENERATION_TIME_SECS=1
 
 ####### Parameters for summarization with --run_rag option
 
@@ -246,13 +291,13 @@ Note: if the demo has already been run, you can use the following command to ski
 ./run-demo.sh --skip
 ```
 
-## Run sample RAG application
+## Run sample vector search/retrieve application
 
-Run RAG on the images and summaries you have ingested in the vector DB.
+Run vector search/retrieve on the images and summaries you have ingested in the vector DB.
 
-*Note*: Currently RAG and video-summarization run as separate processes. Please run RAG searches on input videos you have already run video-summarization on. 
+*Note*: Currently vector search/retrieve and video-summarization run as separate processes. Please run searches on input videos you have already run video-summarization on. 
 
-3 types of RAG searches are possible currently:
+3 types of vector search/retrieve are possible currently:
 
 1. Text based similarity search
 Open `run_demo.sh` and enter the QUERY_TEXT in `QUERY_TEXT=` and `FILTER_EXPR`(optional) variable. 
