@@ -26,9 +26,45 @@ see [here](https://huggingface.co/docs/hub/en/security-tokens).
 
 4. The tracking/ReID modules require finetuning the DeepSORT configuration parameters as per the input video/camera stream being tested.
     
-    For the DeepSORT module, TBD here.....
+    For the DeepSORT module, please finetune these values in the .env.
+
+    ```
+    TRACKER_NN_BUDGET=100
+    TRACKER_MAX_COSINE_DISTANCE=0.3
+    TRACKER_MAX_IOU_DISTANCE=0.7
+    TRACKER_MAX_AGE=100
+    TRACKER_N_INIT=5
+    TRACKER_DET_THRESH=0.7
+    ```
+
+    For example:
+
+    TRACKER_NN_BUDGET=100
+
+    Maximum number of feature samples to keep for each track. Higher values make tracking more stable and robust to appearance changes, but increase memory usage and may slow down matching. Lower values make tracking more responsive to appearance changes, but tracks may switch IDs more easily or be lost in challenging scenarios. Feature samples can be updated per frame and because the tracker processes every frame in the input video by default, this optimal value depends on the input framerate. The default setting has been calibrated for the standard input video included with this application.
+
+    TRACKER_MAX_COSINE_DISTANCE=0.3
     
-    For the ReID reconcillation module, please finetune these two values in the .env.
+    Controls how strictly reidentification features are matched. One of the most powerful levers for reducing ID switches. Lower values = stricter, fewer ID switches, but may lose tracks if appearance changes. Higher values = more flexible, but may increase ID switches or false matches. 
+    
+    TRACKER_MAX_IOU_DISTANCE=0.7
+
+    Controls how strictly detections are associated with existing tracks. Lower values = stricter, tracks break more easily if detections shift. Higher values = more flexible, but may increase false positives or ID switches. 
+
+    TRACKER_MAX_AGE=100
+
+    Maximum number of frames to keep a track alive without a matching detection. Higher values = tracks persist longer through occlusions/missed detections, but may increase false positives. Lower values = lost tracks removed quickly, but may lose tracks during short occlusions. This parameter usually requires the most fine-tuning. Because the tracker processes every frame in the input video by default, its optimal value depends on the input framerate. The default setting has been calibrated for the standard input video included with this application.
+
+    TRACKER_N_INIT=5
+
+    Number of consecutive matches before confirming a track. Higher values = more consistent detection required (reduces false positives, but may delay/miss true tracks). Lower values = tracks confirmed quickly, but may allow more false tracks.
+
+    TRACKER_DET_THRESH=0.7
+    
+    Detection threshold for the person detector. Usually does not require finetuning but may be required if people are poorly lit / not easily visible.
+
+    
+    For the ReID reconcillation module, please finetune these three values in the .env.
     
     ```
     REID_SIM_SCORE_THRESHOLD=0.67
@@ -154,11 +190,11 @@ TRACKER_DET_MODEL_PATH="tracker_models/person-detection-0202/FP16/person-detecti
 TRACKER_REID_MODEL_PATH="tracker_models/person-reidentification-retail-0287/FP16/person-reidentification-retail-0287.xml"
 TRACKER_DEVICE="GPU"
 TRACKER_NN_BUDGET=100
-TRACKER_MAX_COSINE_DISTANCE=0.5
+TRACKER_MAX_COSINE_DISTANCE=0.3
 TRACKER_METRIC_TYPE="cosine"
-TRACKER_MAX_IOU_DISTANCE=0.4
+TRACKER_MAX_IOU_DISTANCE=0.7
 TRACKER_MAX_AGE=100
-TRACKER_N_INIT=45
+TRACKER_N_INIT=5
 TRACKER_WIDTH=700
 TRACKER_HEIGHT=450
 TRACKER_DET_THRESH=0.7
@@ -187,7 +223,7 @@ PARTITION_CREATION_INTERVAL=1 # in hours
 # Data will be flushed to Milvus at this interval to ensure it's saved and available for queries.
 TRACKING_LOGS_GENERATION_TIME_SECS=1
 # If True, overwrites the existing Milvus collection. Use with caution as this will delete existing data. Useful for testing.
-OVERWRITE_MILVUS_COLLECTION=TRUE
+OVERWRITE_MILVUS_COLLECTION="TRUE"
 
 ####### Parameters for summarization with --run_rag option
 
