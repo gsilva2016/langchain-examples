@@ -1,4 +1,4 @@
-# Video Analysis Pipeline using Person Trcking/ReID, Summarization using GenAI and traditional CV techniques
+# Video Analysis Pipeline using Person Tracking/ReID, Summarization using GenAI and traditional CV techniques
 
 Uses: OpenVINO Model Server, open source/custom Langchain packages, MiniCPM-V-2_6, Llama3.2-3B, DeepSORT/ReID and Milvus.
 
@@ -13,6 +13,13 @@ This repository provides a modular pipeline for video analysis and summarization
 - **Model Serving:** Integrates OpenVINO Model Server (OVMS) for efficient model inference and deployment.
 
 Each module can be enabled or disabled independently, allowing flexible experimentation and customization for different video analytics scenarios. (Refer to the [Run Video Pipeline](#run-video-pipeline) section.)
+
+## System Requirements
+
+•	CPU: Intel Core Platform (tested on Arrow Lake, Lunar Lake, and Meteor Lake platforms)
+•	GPU: iGPU required for accelerated runtimes. If using Intel discrete GPU, change to appropriate GPU ID in the .env file
+•	Memory: >= 32G
+•	OS: Ubuntu 24.04
 
 ## Installation and .env (environment variable file) Configuration
 
