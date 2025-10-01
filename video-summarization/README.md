@@ -17,8 +17,11 @@ Each module can be enabled or disabled independently, allowing flexible experime
 ## System Requirements
 
 •	CPU: Intel Core Platform (tested on Arrow Lake, Lunar Lake, and Meteor Lake platforms)
+
 •	GPU: iGPU required for accelerated runtimes. If using Intel discrete GPU, change to appropriate GPU ID in the .env file
+
 •	Memory: >= 32G
+
 •	OS: Ubuntu 24.04
 
 ## Installation and .env (environment variable file) Configuration
