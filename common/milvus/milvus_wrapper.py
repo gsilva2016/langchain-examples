@@ -1,196 +1,220 @@
 from datetime import datetime
-from typing import List, Dict
-import uuid
-import os
-from pymilvus import Collection, connections, utility, db
-from langchain_milvus import Milvus
-from langchain_openvino_multimodal import OpenVINOBlipEmbeddings
+from typing import List
+from pymilvus import DataType, MilvusClient
 from dotenv import load_dotenv
+import os
+import threading
 
 
 class MilvusManager:
-    def __init__(self, milvus_uri: str = "localhost",
-                 milvus_port: int = 19530, 
-                 milvus_dbname: str = "milvus_db",
-                 env_file: str = ".env",
-                 embedding_model: str = "Salesforce/blip-itm-base-coco",
-                 txt_embedding_device: str = "GPU",
-                 img_embedding_device: str = "GPU",
-                 collection_name: str = "video_chunks") -> None:
-        """ 
-        Initialize the MilvusManager class. Default values are set for the parameters if not provided.
-        """
+    _local = threading.local()  
+
+    def __init__(self, db_name="default", host="localhost", port="19530", env_file: str = ".env"):
         load_dotenv(env_file)
 
-        self.milvus_uri = milvus_uri
-        self.milvus_port = milvus_port
-        self.milvus_dbname = milvus_dbname
-        self.embedding_model = os.getenv("EMBEDDING_MODEL", embedding_model)
-        self.txt_embedding_device = os.getenv("TXT_EMBEDDING_DEVICE", txt_embedding_device)
-        self.img_embedding_device = os.getenv("IMG_EMBEDDING_DEVICE", img_embedding_device)
-        
-        self.ov_blip_embeddings = OpenVINOBlipEmbeddings(model_id=self.embedding_model, ov_text_device=self.txt_embedding_device,
-                                                        ov_vision_device=self.img_embedding_device)
+        self.milvus_dbname = os.getenv("MILVUS_DBNAME", db_name)
+        self.milvus_host = os.getenv("MILVUS_HOST", host)
+        self.milvus_port = os.getenv("MILVUS_PORT", port)
 
-        # Connect to Milvus
-        self._connect_to_milvus(collection_name)
-
-        self.vectorstore = Milvus(
-            embedding_function=self.ov_blip_embeddings,
-            collection_name=collection_name,
-            connection_args={"uri": f"http://{self.milvus_uri}:{self.milvus_port}", "db_name": self.milvus_dbname},
-            index_params={"index_type": "FLAT", "metric_type": "COSINE"},
-            consistency_level="Strong",
-            drop_old=False,
+        test_client = MilvusClient(
+            uri=f"http://{self.milvus_host}:{self.milvus_port}",
+            db_name=self.milvus_dbname
         )
+        print(f"Connected to Milvus at {self.milvus_host}:{self.milvus_port} "
+              f"using database {self.milvus_dbname}")
 
-    def _connect_to_milvus(self, collection_name: str) -> None:
+    def _get_client(self) -> MilvusClient:
         """
-        Connect to the Milvus database and set up the database.
+        Get a thread-local MilvusClient instance
         """
-        connections.connect(host=self.milvus_uri, port=self.milvus_port)
-        if self.milvus_dbname not in db.list_database():
-            db.create_database(self.milvus_dbname)
-        db.using_database(self.milvus_dbname)
+        if not hasattr(self._local, "client"):
+            self._local.client = MilvusClient(uri=f"http://{self.milvus_host}:{self.milvus_port}", db_name=self.milvus_dbname)
+        return self._local.client
 
-        collections = utility.list_collections()
-        for name in collections:
-            if name == collection_name:
-            # Not droppingthe collection if it exists for now
-            # utility.drop_collection(name)
-                print(f"Collection {name} exists.")
-
-    def embed_txt_and_store(self, data: List[Dict]) -> Dict:
+    def create_collection(self, collection_name: str, dim: int, overwrite=False):
         """
-        Embed text data and store it in Milvus.
+        Create a new collection in Milvus
         """
+        client = self._get_client()
         try:
-            if not data:
-                return {"status": "error", "message": "No data to embed", "total_chunks": 0}
-            
-            all_summaries = [item["chunk_summary"] for item in data]
-            embeddings = self.ov_blip_embeddings.embed_documents(all_summaries)
-            print(f"Generated {len(embeddings)} text embeddings of Shape: {embeddings[0].shape}")
-            
-            # Prepare texts and metadata
-            texts = [item["chunk_summary"] for item in data]
-            # Getting all objects associated with each chunk
-            objects = []
-            for item in data:
-                objects.append(item["detected_objects"])
+            if client.has_collection(collection_name):
+                if overwrite:
+                    print(f"Overwrite flag is set. Dropping existing collection {collection_name}.")
+                    client.drop_collection(collection_name)
+                else:
+                    print(f"Collection {collection_name} already exists.")
+                    client.load_collection(collection_name)
+                    return
 
-            metadatas = [
-                {
-                    "video_path": item["video_path"],
-                    "chunk_id": item["chunk_id"],
-                    "start_time": item["start_time"],
-                    "end_time": item["end_time"],
-                    "chunk_path": item["chunk_path"],
-                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-                    "frame_id": -1, # not required for text but required field for metadata since image needs it
-                    "mode": "text",
-                    "detected_objects": str(objects[idx])
-                }
-                for idx, item in enumerate(data)
-            ]
-                
-            ids = [f"{meta['chunk_id']}_{uuid.uuid4()}" for meta in metadatas]
-            self.vectorstore.add_embeddings(texts=texts, ids=ids, metadatas=metadatas, embeddings=embeddings)
+            schema = client.create_schema(enable_dynamic_field=True)
+            schema.add_field(field_name="pk", datatype=DataType.INT64, is_primary=True, auto_id=True)
+            schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=dim)
+            schema.add_field(field_name="metadata", datatype=DataType.JSON)
 
-            return {"status": "success", "total_chunks": len(texts)}
-
-        except Exception as e:
-            print(f"Error in embedding and storing text data: {e}")
-            return {"status": "error", "message": str(e), "total_chunks": 0}
-    
-    def embed_img_and_store(self, chunk: Dict) -> Dict:
-        """
-        Embed image data and store it in Milvus.
-        """
-        try:
-            all_sampled_images = chunk["frames"]
-            embeddings = self.ov_blip_embeddings.embed_images(all_sampled_images)
-            print(f"Generated {len(embeddings)} img embeddings of Shape: {embeddings[0].shape}")
-            
-            # Prepare texts and metadata
-            texts = [chunk["chunk_path"] for _ in embeddings]
-
-            metadatas = []
-            for idx in chunk["frame_ids"]:
-                objects = []
-                for x in chunk.get("detected_objects", []):
-                    if x.get("frame") == idx:
-                        objects = x.get("objects", [])
-                        break
-                metadatas.append({
-                    "video_path": chunk["video_path"],
-                    "chunk_id": chunk["chunk_id"],
-                    "frame_id": idx,
-                    "start_time": chunk["start_time"],
-                    "end_time": chunk["start_time"],
-                    "chunk_path": chunk["chunk_path"],
-                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-                    "mode": "image",
-                    "detected_objects": str(objects)
-                })
-
-            ids = [f"{meta['chunk_id']}_{uuid.uuid4()}" for meta in metadatas]
-            self.vectorstore.add_embeddings(texts=texts, ids=ids, metadatas=metadatas, embeddings=embeddings)
-
-            return {"status": "success", "total_frames_in_chunk": len(all_sampled_images)}
-
-        except Exception as e:
-            print(f"Error in embedding and storing images: {e}")
-            return {"status": "error", "message": str(e), "total_frames_in_chunk": 0}
-
-    def query(self, expr: str, collection_name: str = "video_chunks") -> Dict:
-        """
-        Query data from Milvus using an expression.
-        """
-        try:
-            collection = Collection(collection_name)
-            collection.load()
-
-            results = collection.query(expr, output_fields=["chunk_id", "chunk_path", "video_id", "frame_id"])
-            print(f"{len(results)} vectors returned for query: {expr}")
-
-            return {"status": "success", "chunks": results}
-
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-
-    def search(self, query: str, top_k: int = 1) -> Dict:
-        """
-        Perform similarity search in Milvus.
-        """
-        try:
-            results = self.vectorstore.similarity_search(
-                query=query,
-                k=top_k,
-                filter=None,
-                include=["metadata"],
+            index_params = MilvusClient.prepare_index_params()
+            index_params.add_index(
+                field_name="vector",
+                index_type="FLAT",
+                index_name="vector_index",
+                metric_type="COSINE",
             )
 
-            return {
-                "status": "success",
-                "results": [
-                    {
-                        "video_path": doc.metadata["video_path"],
-                        "chunk_id": doc.metadata["chunk_id"],
-                        "start_time": doc.metadata["start_time"],
-                        "end_time": doc.metadata["end_time"],
-                        "chunk_path": doc.metadata["chunk_path"],
-                        "chunk_summary": doc.page_content,
-                    }
-                    for doc in results
-                ],
-            }
+            client.create_collection(
+                collection_name=collection_name,
+                index_params=index_params,
+                schema=schema,
+            )
 
         except Exception as e:
+            print(f"Error creating collection {collection_name}: {e}")
+            raise
+        finally:
+            res = client.get_load_state(collection_name=collection_name)
+            print(f"Collection {collection_name} with dimension {dim}: Load state: {res}")
+
+    def _ensure_partition(self, collection_name: str, partition_name: str):
+        """
+        Create partition if it does not exist
+        """
+        client = self._get_client()
+        try:
+            if not client.has_partition(collection_name, partition_name):
+                client.create_partition(collection_name=collection_name,
+                                        partition_name=partition_name)
+        except Exception as e:
+            print(f"Error creating partition {partition_name}: {e}")
+            raise
+
+    def generate_partition_name(self, prefix: str = "reid", fmt: str = "%Y%m%d_%H") -> str:
+        """
+        Generate a partition name based on current time
+        """
+        return f"{prefix}_{datetime.now().strftime(fmt)}"
+
+    def insert_data(self, collection_name: str, vectors: list, metadatas: list, partition_name: str = None):
+        """
+        Insert data into the collection
+        """
+        client = self._get_client()
+        try:
+            if not client.has_collection(collection_name):
+                raise ValueError(f"Collection {collection_name} does not exist.")
+
+            if partition_name is None:
+                partition_name = self.generate_partition_name(prefix=collection_name)
+
+            if partition_name:
+                self._ensure_partition(collection_name, partition_name)
+
+            if metadatas is None:
+                metadatas = [{} for _ in range(len(vectors))]
+
+            records = [{"vector": vec, "metadata": meta} for vec, meta in zip(vectors, metadatas)]
+            resp = client.insert(collection_name=collection_name, data=records, partition_name=partition_name)
+
+            return {"status": "success", "total_chunks": resp["insert_count"]}
+        except Exception as e:
+            print(f"Error inserting data into {collection_name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    def get_vectorstore(self) -> Milvus:
+    def search(self, collection_name: str, query_vector: List[list] | list, output_fields = ["metadata", "vector"],
+               limit: int = 1, filter: str = "", partition_names: list = None):
         """
-        Get the vector store instance.
+        Search for similar vectors in the collection
         """
-        return self.vectorstore    
+        client = self._get_client()
+        try:
+            if not client.has_collection(collection_name):
+                raise ValueError(f"Collection {collection_name} does not exist.")
+
+            search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+
+            if partition_names:
+                existing_partitions = client.list_partitions(collection_name)
+                partition_names = [p for p in partition_names if p in existing_partitions]
+                if not partition_names:
+                    # print(f"None of the specified partitions exist in {collection_name}.")
+                    partition_names = None
+
+            results = client.search(
+                collection_name=collection_name,
+                data=query_vector,
+                output_fields=output_fields,
+                limit=limit,
+                filter=filter,
+                search_params=search_params,
+                consistency_level="Strong",
+                partition_names=partition_names
+            )
+            return list(results)
+        except Exception as e:
+            print(f"Error searching in {collection_name}: {e}")
+            return {"status": "error", "message": str(e)}
+    
+    def upsert_data(self, collection_name: str, pks: list, vectors: list, metadatas: list, partition_name: str = None):
+        """
+        Upsert data into the collection
+        """
+        client = self._get_client()
+        try:
+            if not (len(pks) == len(vectors) == len(metadatas)):
+                raise ValueError("pks, vectors, and metadatas length must match.")
+            
+            if not client.has_collection(collection_name):
+                raise ValueError(f"Collection {collection_name} does not exist.")
+
+            if partition_name is None:
+                partition_name = self.generate_partition_name(prefix=collection_name)
+
+            if partition_name:
+                self._ensure_partition(collection_name, partition_name)
+
+            records = []
+            for pk, vector, metadata in zip(pks, vectors, metadatas):
+                record = {
+                    "pk": pk,
+                    "vector": vector,
+                    "metadata": metadata
+                }
+                records.append(record)
+
+            resp = client.upsert(
+                collection_name=collection_name,
+                data=records,
+                partition_name=partition_name
+            )
+
+            return {"status": "success", "total_chunks": resp["upsert_count"], "pks": resp["primary_keys"]}
+        except Exception as e:
+            print(f"Error upserting data into {collection_name}: {e}")
+            return {"status": "error", "message": str(e)}
+            
+
+    def query(self, collection_name: str, filter: str = "", limit: int = 100, output_fields = ["pk", "metadata"], partition_names: list = None):
+        """
+        Query the collection with an expression
+        """
+        client = self._get_client()
+        try:
+            if not client.has_collection(collection_name):
+                raise ValueError(f"Collection {collection_name} does not exist.")
+
+            if partition_names:
+                existing_partitions = client.list_partitions(collection_name)
+                partition_names = [p for p in partition_names if p in existing_partitions]
+                if not partition_names:
+                    print(f"None of the specified partitions exist in {collection_name}.")
+                    partition_names = None
+            
+            results = client.query(
+                collection_name=collection_name,
+                filter=filter,
+                output_fields=output_fields,
+                limit=limit,
+                consistency_level="Strong",
+                partition_names=partition_names
+            )
+            return results
+        except Exception as e:
+            print(f"Error querying {collection_name}: {e}")
+            return {"status": "error", "message": str(e)}
