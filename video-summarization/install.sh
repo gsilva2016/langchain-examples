@@ -92,9 +92,7 @@ if [ "$1" == "--skip" ]; then
 	activate_conda
 
 else
-    echo "Installing dependencies"
-    activate_conda
-    
+    echo "Installing dependencies"    
     sudo DEBIAN_FRONTEND=noninteractive apt update
     sudo DEBIAN_FRONTEND=noninteractive apt install git ffmpeg wget -y
 
