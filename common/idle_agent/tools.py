@@ -5,10 +5,12 @@ def update_idle_status(tool_context: ToolContext) -> dict:
     collection_name = tool_context.state.get('collection_name', [])
     collection_data = tool_context.state.get('collection_data', [])
     milvus_manager = tool_context.state.get('milvus_manager', [])
+    idle_threshold_seconds = tool_context.state.get('idle_threshold_seconds', 900) 
+    
     pks = []
     vectors = []
     metadatas = []
-    idle_threshold_seconds= 30
+    
     for item in collection_data:
         pk = item.get("pk")
         if not pk:
@@ -31,7 +33,7 @@ def update_idle_status(tool_context: ToolContext) -> dict:
             idle_text = "idle" if idle else "not idle"
             metadata['summary'] = (
                 f"{metadata.get('global_track_id')} was first seen at {first_detected_str}, "
-                f"last seen at {last_update_str}, in videos ({seen_in_videos}), and is currently {idle_text}."
+                f"last seen at {last_update_str}, in videos ({seen_in_videos}), and is  {idle_text}."
             )
         else:
             metadata['idle_status'] = False

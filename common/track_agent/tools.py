@@ -1,5 +1,4 @@
 from datetime import datetime
-import random
 
 def surge_alert_update(tool_context) -> dict:
     collection_name = tool_context.state.get('collection_name', [])
@@ -10,11 +9,11 @@ def surge_alert_update(tool_context) -> dict:
     surge_time = now.replace(minute=0, second=0, microsecond=0)
 
     available_agents_count = 0
+    seen_agents = set()
     pks = []
     vectors = []
     metadatas = []
 
-    deliveries_count = random.randint(0, 100)
     threshold = 0.8  
     surge_time_str = surge_time.isoformat(sep=' ', timespec='seconds')
     for item in collection_data:
@@ -26,19 +25,42 @@ def surge_alert_update(tool_context) -> dict:
         metadata = item.get("metadata", {})
         is_assigned = metadata.get('is_assigned', False)
         last_update_str = metadata.get('last_update')
+        deliveries_count = metadata.get('deliveries_count')
+        global_track_id = metadata.get('global_track_id')
         last_update = None
         try:
             if last_update_str:
                 last_update = datetime.strptime(last_update_str, "%Y-%m-%d %H:%M:%S")
         except Exception:
             continue
+    
+        if global_track_id and not is_assigned and last_update and last_update > surge_time:
+            if global_track_id not in seen_agents:
+                seen_agents.add(global_track_id)
+                available_agents_count += 1
+                
+    for item in collection_data:
+        pk = item.get("pk")
+        vector = item.get("vector")
+        if not pk or vector is None:
+            continue
         
-        if not is_assigned and last_update and last_update > surge_time:
-            available_agents_count += 1
+        metadata = item.get("metadata", {})
+        is_assigned = metadata.get('is_assigned', False)
+        last_update_str = metadata.get('last_update')
+        deliveries_count = metadata.get('deliveries_count')
+        global_track_id = metadata.get('global_track_id')
+        last_update = None
+        try:
+            if last_update_str:
+                last_update = datetime.strptime(last_update_str, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            continue
+   
             
         metadata['surge_alert_time'] = surge_time_str
         metadata['available_agents'] = available_agents_count
-        metadata['deliveries_count'] = deliveries_count
+        # print("available_agents_count: ", available_agents_count)
         ratio = float(available_agents_count) / deliveries_count if deliveries_count > 0 else 1.0
         
         if ratio < threshold:

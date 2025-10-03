@@ -5,22 +5,15 @@ from common.milvus.milvus_wrapper import MilvusManager
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
-from dotenv import load_dotenv
-from datetime import datetime, timedelta
-from common.track_agent.agent import root_agent
+from datetime import datetime
+from common.summary_agent.agent import root_agent
 import os
 
 
-async def adk_runner(args, last_processed_dt):
+async def adk_runner(args): ##, last_processed_ts):
     milvus_manager = MilvusManager()    
-    print("last processed time:", last_processed_dt)
-
-    # Calculate one hour later timestamp
-    one_hour_later = last_processed_dt + timedelta(hours=1)
-    
-    
-    # Create filter expression checking timestamp between last_processed_dt and last_processed_dt + 1 hour
-    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt}" AND metadata["event_creation_timestamp"] < "{one_hour_later}"'
+    # print("last processed time:", last_processed_ts)
+    filter_expr = '' ###f'metadata["event_creation_timestamp"] > "{last_processed_ts}"'
     collection_data = milvus_manager.query(
         collection_name=args.collection_name,
         filter=filter_expr,
@@ -32,19 +25,19 @@ async def adk_runner(args, last_processed_dt):
         metadata = item.get("metadata", {})
         print(" pk:", pk)
         print("\n metadata:", metadata)
-    if not collection_data: 
+    
+    # generate_end_of_day_report(collection_data, 'out.csv')
+    if not collection_data:
         print("No data found in the collection. Skipping agent invocation.")
-        latest_ts = (last_processed_dt + timedelta(minutes=59, seconds=59))
-        return [], latest_ts  
-
+        return [], last_processed_ts  
     session_service = InMemorySessionService()
     user_id = "user1"
     session_id = "session1"
-    app_name = "track_agent_app"
+    app_name = "report_agent_app"
+    
     initial_state = {
-        "collection_name": "tracking_logs",
         "collection_data": collection_data,
-        "milvus_manager": milvus_manager
+        "output_csv_path": "end_of_day_report.csv" 
     }
     
     # Create session asynchronously, with  initial state
@@ -61,7 +54,7 @@ async def adk_runner(args, last_processed_dt):
    
     user_input = types.Content(
         role='user',
-        parts=[types.Part(text="use surge_alert_update to store surge alert metadata, including available_agents count, deliveries_count, and summary in Milvus database")]
+        parts=[types.Part(text="use report_tool to generate end of day report")]
     )
    
     
@@ -79,28 +72,14 @@ async def adk_runner(args, last_processed_dt):
     minutes = int(elapsed_seconds // 60)
     seconds = int(elapsed_seconds % 60)
     print(f"Processing time: {minutes} minutes and {seconds} seconds")    
-
     if collection_data:
-        latest_ts = (last_processed_dt + timedelta(minutes=59, seconds=59)) 
+        # Assumes all timestamps are comparable and ISO
+        latest_ts = max(item["metadata"]["event_creation_timestamp"] for item in collection_data)
         print("latest_ts", latest_ts)
         return collection_data, latest_ts
     else:
-        return [], last_processed_dt
+        return [], last_processed_ts
 
-async def periodic_runner(args, interval_seconds):
-    # Set initial timestamp to midnight of today
-    last_processed_dt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
-    # Calculate tomorrow's date at midnight (start of next day)
-    tomorrow = datetime.now().date() + timedelta(days=1)
-    tomorrow_midnight = datetime.combine(tomorrow, datetime.min.time())
-
-    while True:
-        new_data, last_processed_dt = await adk_runner(args, last_processed_dt)
-        if not new_data and last_processed_dt >= tomorrow_midnight:
-            print("No new data found, exiting loop.")
-            break  # exit while True loop
-        await asyncio.sleep(3) ##interval_seconds)
 
  
 if __name__ == "__main__":
@@ -111,9 +90,6 @@ if __name__ == "__main__":
     parser.add_argument("--collection_name", type=str, default="tracking_logs")
     args = parser.parse_args()
     
-    load_dotenv()
-    interval_minutes = float(os.getenv("RUNNER_INTERVAL_MINUTES_TRACK", 60))  # Default is 1 hour
-    interval_seconds = int(interval_minutes * 60)
-
-    asyncio.run(periodic_runner(args, interval_seconds))
+    asyncio.run(adk_runner(args))
+    
 
