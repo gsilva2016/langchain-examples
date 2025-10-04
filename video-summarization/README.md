@@ -390,18 +390,18 @@ To stop, start or delete the DB:
 
 To enable Idle Agent flow, which periodically updates the idle status and stores it along with a short summary in MilvusDB, run the following command:
 ```
-./run_demo.sh --run_idle_agent
+./run-demo.sh --run_idle_agent
 ```
 ## Run Track Agent
 
 To enable tracking Agent flow, which periodically updates the number of available delivery agents and active orders then triggers a price alert if the ratio falls below a threshold, run the following command:
 ```
-./run_demo.sh --run_track_agent
+./run-demo.sh --run_track_agent
 ```
 ## Run Report Agent
 
 To enable end-of-day report Agent flow, which generates an end-of-day report based on metadata stored in MilvusDB and augmented through Idle agent and Report Agen, run the following command:
 ```
-./run_demo.sh --run_report_agent
+./run-demo.sh --run_report_agent
 ```
 Note: Ensure that MilvusDB is properly set up and contains the necesseray data before running the agent.
