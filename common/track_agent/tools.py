@@ -72,14 +72,17 @@ def price_alert_update(tool_context: ToolContext) -> dict:
         pks.append(pk)
         vectors.append(vector)
         metadatas.append(metadata)
+    if not pks:
+        print("No valid items found to upsert.")
+        return {"status": "error", "message": "No valid items to upsert."}
 
     try:
-        milvus_manager.upsert_data(
-            collection_name=collection_name,
-            pks=pks,
-            vectors=vectors,
-            metadatas=metadatas
-        )
-        return f"price alert saved with agents={available_agents_count}, deliveries={deliveries_count}, time={price_alert_time_str}"
+        result = milvus_manager.upsert_data(collection_name=collection_name,
+                                    pks=pks,
+                                    vectors=vectors,
+                                    metadatas=metadatas)
+
+        summary = f"Agent updated DB successfully with {len(pks)} entries."
+        return summary
     except Exception as ex:
-        return f"Failed to update price alert: {str(ex)}"
+        return f"Agent failed to update DB: {str(ex)}"

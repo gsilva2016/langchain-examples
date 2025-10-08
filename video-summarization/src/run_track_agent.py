@@ -32,8 +32,8 @@ async def adk_runner(args, last_processed_dt):
         return [], latest_ts  
 
     session_service = InMemorySessionService()
-    user_id = "user1"
-    session_id = "session1"
+    user_id = "user2"
+    session_id = "session2"
     app_name = "track_agent_app"
     initial_state = {
         "collection_name": "tracking_logs",
@@ -55,7 +55,7 @@ async def adk_runner(args, last_processed_dt):
    
     user_input = types.Content(
         role='user',
-        parts=[types.Part(text="use price_alert_update to store price alert metadata, including price_alert_time, available_agents, price_alert_summary and price_alert_status in Milvus database")]
+        parts=[types.Part(text="use price_alert_update to store price alert metadata in Milvus database")]
     )
    
     
