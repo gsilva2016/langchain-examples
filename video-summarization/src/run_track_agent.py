@@ -16,22 +16,16 @@ async def adk_runner(args, last_processed_dt):
     print("last processed time:", last_processed_dt)
 
     # Calculate one hour later timestamp
-    one_hour_later = last_processed_dt + timedelta(hours=1)
-    
-    
-    # Create filter expression checking timestamp between last_processed_dt and last_processed_dt + 1 hour
-    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt}" AND metadata["event_creation_timestamp"] < "{one_hour_later}"'
+    one_hour_later = last_processed_dt + timedelta(hours=1)    
+    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt.isoformat()}" AND metadata["event_creation_timestamp"] < "{one_hour_later.isoformat()}"'
+   
     collection_data = milvus_manager.query(
         collection_name=args.collection_name,
         filter=filter_expr,
         limit=1000,
         output_fields=["pk", "metadata", "vector"]
     )
-    for item in collection_data:
-        pk = item.get("pk")
-        metadata = item.get("metadata", {})
-        print(" pk:", pk)
-        print("\n metadata:", metadata)
+
     if not collection_data: 
         print("No data found in the collection. Skipping agent invocation.")
         latest_ts = (last_processed_dt + timedelta(minutes=59, seconds=59))
@@ -61,7 +55,7 @@ async def adk_runner(args, last_processed_dt):
    
     user_input = types.Content(
         role='user',
-        parts=[types.Part(text="use surge_alert_update to store surge alert metadata, including available_agents count, deliveries_count, and summary in Milvus database")]
+        parts=[types.Part(text="use price_alert_update to store price alert metadata, including price_alert_time, available_agents, price_alert_summary and price_alert_status in Milvus database")]
     )
    
     

@@ -25,14 +25,14 @@ llm_serving = LiteLlm(
     additional_drop_params=["extra_body"]
 )
 # Register this as a tool for your agent
-tracking_tool = FunctionTool(surge_alert_update)
+tracking_tool = FunctionTool(price_alert_update)
 
 # Create an agent which can use multiple tools to take its action. 
 # Note ADKWEB requires root_agent object
 root_agent = Agent(
     name = "tracking_agent",
     model = llm_serving,
-    description = "AI agent to update hourly surge alerts by counting available delivery agents and logging surge status in the database.",
+    description = "AI agent to update price alerts by counting available delivery agents and logging price alert status in the database.",
     instruction = agent_instruction,
     tools=[tracking_tool]
 )

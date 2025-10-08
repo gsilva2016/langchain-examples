@@ -1,12 +1,13 @@
 from datetime import datetime
+from google.adk.tools.tool_context import ToolContext
 
-def surge_alert_update(tool_context) -> dict:
+def price_alert_update(tool_context: ToolContext) -> dict:
     collection_name = tool_context.state.get('collection_name', [])
     collection_data = tool_context.state.get('collection_data', [])
     milvus_manager = tool_context.state.get('milvus_manager', [])
 
     now = datetime.now()
-    surge_time = now.replace(minute=0, second=0, microsecond=0)
+    price_alert_time_now = now.replace(minute=0, second=0, microsecond=0)
 
     available_agents_count = 0
     seen_agents = set()
@@ -15,18 +16,13 @@ def surge_alert_update(tool_context) -> dict:
     metadatas = []
 
     threshold = 0.8  
-    surge_time_str = surge_time.isoformat(sep=' ', timespec='seconds')
+    price_alert_time_str = price_alert_time_now.isoformat(sep=' ', timespec='seconds')
     for item in collection_data:
-        pk = item.get("pk")
-        vector = item.get("vector")
-        if not pk or vector is None:
-            continue
         
         metadata = item.get("metadata", {})
-        is_assigned = metadata.get('is_assigned', False)
-        last_update_str = metadata.get('last_update')
-        deliveries_count = metadata.get('deliveries_count')
-        global_track_id = metadata.get('global_track_id')
+        is_assigned = metadata['is_assigned']
+        last_update_str = metadata['last_update']
+        global_track_id = metadata['global_track_id']
         last_update = None
         try:
             if last_update_str:
@@ -34,7 +30,7 @@ def surge_alert_update(tool_context) -> dict:
         except Exception:
             continue
     
-        if global_track_id and not is_assigned and last_update and last_update > surge_time:
+        if global_track_id and not is_assigned and last_update and last_update > price_alert_time_now:
             if global_track_id not in seen_agents:
                 seen_agents.add(global_track_id)
                 available_agents_count += 1
@@ -46,10 +42,9 @@ def surge_alert_update(tool_context) -> dict:
             continue
         
         metadata = item.get("metadata", {})
-        is_assigned = metadata.get('is_assigned', False)
-        last_update_str = metadata.get('last_update')
-        deliveries_count = metadata.get('deliveries_count')
-        global_track_id = metadata.get('global_track_id')
+        is_assigned = metadata['is_assigned']
+        last_update_str = metadata['last_update']
+        deliveries_count = metadata['deliveries_count']
         last_update = None
         try:
             if last_update_str:
@@ -58,22 +53,21 @@ def surge_alert_update(tool_context) -> dict:
             continue
    
             
-        metadata['surge_alert_time'] = surge_time_str
         metadata['available_agents'] = available_agents_count
-        # print("available_agents_count: ", available_agents_count)
+        metadata['price_alert_time'] = price_alert_time_str
         ratio = float(available_agents_count) / deliveries_count if deliveries_count > 0 else 1.0
         
         if ratio < threshold:
-            surge_summary_msg = (
-                f"Surge alert at {surge_time_str}, agents={available_agents_count}, deliveries={deliveries_count}, ratio={ratio:.2f}"
+            price_summary_msg = (
+                f"price alert at {price_alert_time_str}, agents={available_agents_count}, deliveries={deliveries_count}, ratio={ratio:.2f}"
             )
-            surge_alert_status= True
+            price_alert_status= True
         else:
-            surge_summary_msg = "No alerts detected"
-            surge_alert_status= False
+            price_summary_msg = "No alerts detected"
+            price_alert_status= False
 
-        metadata['surge_summary'] = surge_summary_msg
-        metadata['surge_alert'] = surge_alert_status
+        metadata['price_alert_summary'] = price_summary_msg
+        metadata['price_alert_status'] = price_alert_status
         
         pks.append(pk)
         vectors.append(vector)
@@ -86,6 +80,6 @@ def surge_alert_update(tool_context) -> dict:
             vectors=vectors,
             metadatas=metadatas
         )
-        return f"Surge alert saved with agents={available_agents_count}, deliveries={deliveries_count}, time={surge_time_str}"
+        return f"price alert saved with agents={available_agents_count}, deliveries={deliveries_count}, time={price_alert_time_str}"
     except Exception as ex:
-        return f"Failed to update surge alert: {str(ex)}"
+        return f"Failed to update price alert: {str(ex)}"

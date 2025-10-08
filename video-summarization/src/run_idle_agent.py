@@ -16,7 +16,7 @@ async def adk_runner(args, last_processed_dt, interval_seconds):
     print("last processed time:", last_processed_dt)
     fifteen_minutes_later = last_processed_dt + timedelta(seconds=interval_seconds)
     print("fifteen_minutes_later:", fifteen_minutes_later)
-    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt}" AND metadata["event_creation_timestamp"] < "{fifteen_minutes_later}"'
+    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt.isoformat()}" AND metadata["event_creation_timestamp"] < "{fifteen_minutes_later.isoformat()}"'
     
     collection_data = milvus_manager.query(
         collection_name=args.collection_name,
