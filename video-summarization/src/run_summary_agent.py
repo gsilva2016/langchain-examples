@@ -5,31 +5,31 @@ from common.milvus.milvus_wrapper import MilvusManager
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
-from datetime import datetime
+from datetime import datetime, timedelta
 from common.summary_agent.agent import root_agent
 import os
 
 
-async def adk_runner(args): ##, last_processed_ts):
-    milvus_manager = MilvusManager()    
-    # print("last processed time:", last_processed_ts)
-    filter_expr = '' ###f'metadata["event_creation_timestamp"] > "{last_processed_ts}"'
+async def adk_runner(args):
+    milvus_manager = MilvusManager()  
+    
+    # Set initial timestamp to midnight of today
+    today_midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) 
+    # Calculate tomorrow's date at midnight (start of next day)
+    tomorrow = datetime.now().date() + timedelta(days=1)
+    tomorrow_midnight = datetime.combine(tomorrow, datetime.min.time()) 
+ 
+    filter_expr = f'metadata["event_creation_timestamp"] > "{today_midnight.isoformat()}" AND metadata["event_creation_timestamp"] < "{tomorrow_midnight.isoformat()}"'
     collection_data = milvus_manager.query(
         collection_name=args.collection_name,
         filter=filter_expr,
         limit=1000,
         output_fields=["pk", "metadata", "vector"]
     )
-    for item in collection_data:
-        pk = item.get("pk")
-        metadata = item.get("metadata", {})
-        print(" pk:", pk)
-        print("\n metadata:", metadata)
     
-    # generate_end_of_day_report(collection_data, 'out.csv')
     if not collection_data:
         print("No data found in the collection. Skipping agent invocation.")
-        return [], last_processed_ts  
+        return []  
     session_service = InMemorySessionService()
     user_id = "user1"
     session_id = "session1"
@@ -72,13 +72,9 @@ async def adk_runner(args): ##, last_processed_ts):
     minutes = int(elapsed_seconds // 60)
     seconds = int(elapsed_seconds % 60)
     print(f"Processing time: {minutes} minutes and {seconds} seconds")    
-    if collection_data:
-        # Assumes all timestamps are comparable and ISO
-        latest_ts = max(item["metadata"]["event_creation_timestamp"] for item in collection_data)
-        print("latest_ts", latest_ts)
-        return collection_data, latest_ts
-    else:
-        return [], last_processed_ts
+   
+    return collection_data
+ 
 
 
  
