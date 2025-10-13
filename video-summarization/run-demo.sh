@@ -76,9 +76,7 @@ else
 fi
 
 # terminate services
-OVMS_PID=$(pgrep -f "ovms")
-if [ -n "$OVMS_PID" ]; then
-    echo "Terminating OVMS PID: $OVMS_PID"
-    kill -9 $OVMS_PID
-    trap "kill -9 $OVMS_PID; exit" SIGINT SIGTERM
+if docker ps --filter "name=$OVMS_CONTAINER_NAME" --format '{{.Names}}' | grep -q $OVMS_CONTAINER_NAME; then
+    echo "Terminating OVMS container: $OVMS_CONTAINER_NAME"
+    docker stop $OVMS_CONTAINER_NAME
 fi
