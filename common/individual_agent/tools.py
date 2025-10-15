@@ -19,7 +19,7 @@ def individual_report_generator(tool_context: ToolContext) -> dict:
         if not global_track_id or not event_ts:
             continue
 
-        # Convert timestamp to start-of-the-hour (e.g., 10:34 → 10:00)
+        # Convert timestamp to start-of-the-hour (e.g., 10:34 → 10:00))
         event_dt = datetime.strptime(event_ts, "%Y-%m-%dT%H:%M:%S")
 
         hour_start = event_dt.replace(minute=0, second=0, microsecond=0)
@@ -27,7 +27,6 @@ def individual_report_generator(tool_context: ToolContext) -> dict:
         hour_window = f"{hour_start.strftime('%H:%M')}-{hour_end.strftime('%H:%M')}"
         first_detected = metadata.get("first_detected")
         last_update = metadata.get("last_update")
-        
         key = (global_track_id, hour_start)
         if key not in hourly_reports:
             hourly_reports[key] = {

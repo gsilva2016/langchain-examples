@@ -897,7 +897,6 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         else:
                             global_track_table[gid]["last_update"] = frame_video_time
                             global_track_table[gid]["seen_in"].add(camera_id)
-
                         snapshot = dict(global_track_table[gid])
 
                     event_dt = datetime.now()
@@ -909,6 +908,7 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         hourly_deliveries_count[hour_string] = random.randint(0, 100)
 
                     deliveries_count_this_event = hourly_deliveries_count[hour_string]  
+
                     # Create Milvus event logs
                     event = {
                         "global_track_id": gid,

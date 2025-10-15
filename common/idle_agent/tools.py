@@ -5,6 +5,7 @@ from datetime import datetime
 from collections import defaultdict
 from datetime import datetime
 
+
 def update_idle_status(tool_context: ToolContext) -> dict:
     """
     Updates idle status and summary for each global_track_id based on the latest last_update event.
