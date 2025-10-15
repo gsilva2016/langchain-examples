@@ -27,12 +27,12 @@ def generate_end_of_day_report(tool_context: ToolContext) -> dict:
         metadata = item.get('metadata', {})
 
         # Extract relevant fields
-        price_time_str = metadata['price_alert_time']
-        available_agents = metadata['available_agents']
-        price_alert = metadata['price_alert_status']
-        deliveries_count = metadata['deliveries_count']
-        price_alert_summary = metadata['price_alert_summary']
-        summary = metadata['summary']
+        price_time_str = metadata.get('price_alert_time')
+        available_agents = metadata.get('available_agents')
+        price_alert = metadata.get('price_alert_status')
+        deliveries_count = metadata.get('deliveries_count')
+        price_alert_summary = metadata.get('price_alert_summary')
+        summary = metadata.get('summary')
         event_creation_ts = metadata.get('event_creation_timestamp', '')
 
         # Collect overall textual summaries

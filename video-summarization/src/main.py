@@ -82,7 +82,8 @@ if __name__ == '__main__':
     collection_configs = [
         (os.getenv("VIDEO_COLLECTION_NAME", "video_chunks"), 256),
         (os.getenv("REID_COLLECTION_NAME", "reid_data"), 256),
-        (os.getenv("TRACKING_COLLECTION_NAME", "tracking_logs"), 256)
+        (os.getenv("TRACKING_COLLECTION_NAME", "tracking_logs"), 256),
+        (os.getenv("INDIVIDUAL_COLLECTION_NAME", "individual_report"), 256)
     ]
     for collection_name, dim in collection_configs:
         milvus_manager.create_collection(

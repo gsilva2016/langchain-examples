@@ -544,7 +544,7 @@ def show_tracking_data(global_track_ids: dict, interval = 5):
                 break
 
             print(f"Total active tracks: {len(global_track_ids)}")
-            for track_id, info in global_track_ids.items():
+            for track_id, info in list(global_track_ids.items()):
                 print(f"Track ID: {track_id},       Info: {info}")
                 print("****************************")
             print("-----------------------------------------------------------------------------------------------------")
@@ -553,7 +553,7 @@ def show_tracking_data(global_track_ids: dict, interval = 5):
     finally:
         print("[Track Viewer]: Stopping track viewer.")
         print(f"Total active tracks: {len(global_track_ids) - 1}")
-        for track_id, info in global_track_ids.items():
+        for track_id, info in list(global_track_ids.items()):
             print(f"Track ID: {track_id},       Info: {info}")
             print("****************************")
         print("-----------------------------------------------------------------------------------------------------")
@@ -759,6 +759,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
     return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
 
 def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):  
+    hourly_deliveries_count = defaultdict(int)
     while True:
         try:
             frame_batch = tracking_results_queue.get()
@@ -787,12 +788,20 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                             global_track_table[global_track_id]["seen_in"].add(global_track_sources[idx])
 
                     snapshot = dict(global_track_table[global_track_id])
+                
+                hour_top = datetime.now().replace(minute=0, second=0, microsecond=0)
+                hour_string = hour_top.strftime("%Y-%m-%d %H:%M:%S")
 
+                # Assign a count only if not already set for this hour
+                if hour_string not in hourly_deliveries_count:
+                    hourly_deliveries_count[hour_string] = random.randint(0, 100)
+
+                deliveries_count_this_event = hourly_deliveries_count[hour_string]    
                 event = {
                     "global_track_id": global_track_id,
                     "event_type": "detected",
                     "first_detected": snapshot["first_detected"],
-                    "event_creation_timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "event_creation_timestamp": event_dt.strftime("%Y-%m-%dT%H:%M:%S"),
                     "is_assigned": snapshot["is_assigned"],
                     "last_update": snapshot["last_update"],
                     "seen_in": list(snapshot["seen_in"]),
@@ -802,8 +811,10 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         f"last_update={snapshot['last_update']}, "
                         f"seen in {list(snapshot['seen_in'])}",
                     ),
-                    "deliveries_count": random.randint(0, 100),
+                    "deliveries_count": deliveries_count_this_event,
                 }
+              
+                
                 tracking_logs_q.put(event)
 
             local_global_mapping = {local: global_id for local, global_id in zip(local_track_ids, global_assigned_ids)}

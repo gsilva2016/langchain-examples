@@ -1,13 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from google.adk.tools.tool_context import ToolContext
 
 def price_alert_update(tool_context: ToolContext) -> dict:
     collection_name = tool_context.state.get('collection_name', [])
     collection_data = tool_context.state.get('collection_data', [])
     milvus_manager = tool_context.state.get('milvus_manager', [])
-
-    now = datetime.now()
-    price_alert_time_now = now.replace(minute=0, second=0, microsecond=0)
 
     available_agents_count = 0
     seen_agents = set()
@@ -16,21 +13,24 @@ def price_alert_update(tool_context: ToolContext) -> dict:
     metadatas = []
 
     threshold = 0.8  
-    price_alert_time_str = price_alert_time_now.isoformat(sep=' ', timespec='seconds')
     for item in collection_data:
         
         metadata = item.get("metadata", {})
         is_assigned = metadata['is_assigned']
         last_update_str = metadata['last_update']
         global_track_id = metadata['global_track_id']
+        event_creation_time_str= metadata['event_creation_timestamp']
+        event_creation_time = datetime.strptime(event_creation_time_str, "%Y-%m-%dT%H:%M:%S")
+        event_creation_time_top_hour = event_creation_time.replace(minute=0, second=0, microsecond=0)
+
         last_update = None
         try:
             if last_update_str:
                 last_update = datetime.strptime(last_update_str, "%Y-%m-%d %H:%M:%S")
         except Exception:
             continue
-    
-        if global_track_id and not is_assigned and last_update and last_update > price_alert_time_now:
+     
+        if global_track_id and not is_assigned and last_update and last_update > event_creation_time_top_hour:
             if global_track_id not in seen_agents:
                 seen_agents.add(global_track_id)
                 available_agents_count += 1
@@ -45,6 +45,11 @@ def price_alert_update(tool_context: ToolContext) -> dict:
         is_assigned = metadata['is_assigned']
         last_update_str = metadata['last_update']
         deliveries_count = metadata['deliveries_count']
+        event_creation_time_str= metadata['event_creation_timestamp']
+        event_creation_time = datetime.strptime(event_creation_time_str, "%Y-%m-%dT%H:%M:%S")
+        event_creation_time_top_hour = event_creation_time.replace(minute=0, second=0, microsecond=0)
+        event_creation_time_top_hour_str = event_creation_time_top_hour.strftime("%Y-%m-%dT%H:%M:%S")
+
         last_update = None
         try:
             if last_update_str:
@@ -54,12 +59,12 @@ def price_alert_update(tool_context: ToolContext) -> dict:
    
             
         metadata['available_agents'] = available_agents_count
-        metadata['price_alert_time'] = price_alert_time_str
+        metadata['price_alert_time'] = event_creation_time_top_hour_str
         ratio = float(available_agents_count) / deliveries_count if deliveries_count > 0 else 1.0
         
         if ratio < threshold:
             price_summary_msg = (
-                f"price alert at {price_alert_time_str}, agents={available_agents_count}, deliveries={deliveries_count}, ratio={ratio:.2f}"
+                f"price alert at {event_creation_time}, agents={available_agents_count}, deliveries={deliveries_count}, ratio={ratio:.2f}"
             )
             price_alert_status= True
         else:

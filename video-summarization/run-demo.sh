@@ -18,7 +18,7 @@ fi
 
 hf auth login --token $HUGGINGFACE_TOKEN
 
-if [ "$1" == "--skip" ] || [ "$2" == "--skip" ] || [ "$1" == "--run_idle_agent" ] || [ "$1" == "--run_track_agent" ] || [ "$1" == "--run_report_agent" ]; then
+if [ "$1" == "--skip" ] || [ "$2" == "--skip" ] || [ "$1" == "--run_idle_agent" ] || [ "$1" == "--run_track_agent" ] || [ "$1" == "--run_report_agent" ] || [ "$1" == "--run_individual_report_agent" ]; then
 	echo "Skipping sample video download"
 else
     # Download sample video
@@ -71,7 +71,12 @@ elif [ "$1" == "--run_report_agent" ]; then
 	# sleep 60
 	echo "Running end of day report generation agent"
     PYTHONPATH=$PROJECT_ROOT_DIR python src/run_summary_agent.py --milvus_uri "$MILVUS_HOST" --milvus_port "$MILVUS_PORT" --milvus_dbname "$MILVUS_DBNAME" --collection_name "$TRACKING_COLLECTION_NAME" 
-
+elif [ "$1" == "--run_individual_report_agent" ]; then
+    bash run-vllm-cpu.sh
+	echo "Waiting for vllm to warm up..."
+	# sleep 60
+	echo "Running individual report generation agent"
+    PYTHONPATH=$PROJECT_ROOT_DIR python src/run_individual_agent.py --milvus_uri "$MILVUS_HOST" --milvus_port "$MILVUS_PORT" --milvus_dbname "$MILVUS_DBNAME" --collection_name "$TRACKING_COLLECTION_NAME"  --report_collection_name "$INDIVIDUAL_COLLECTION_NAME"
 else
     if [ "$RUN_VLM_PIPELINE" == "TRUE" ]; then
         echo "Running VLM pipeline on video"
