@@ -400,8 +400,17 @@ To enable tracking Agent flow, which periodically updates the number of availabl
 ```
 ## Run Report Agent
 
-To enable end-of-day report Agent flow, which generates an end-of-day report based on metadata stored in MilvusDB and augmented through Idle agent and Report Agen, run the following command:
+To enable end-of-day report Agent flow, which generates an end-of-day report based on metadata stored in MilvusDB and augmented through Idle agent and Track agent, run the following command:
 ```
 ./run-demo.sh --run_report_agent
+```
+Note: Ensure that MilvusDB is properly set up and contains the necesseray data before running the agent.
+
+```
+## Run Individual summary Agent
+
+To enable individual summary Agent flow, which generates an hourly individual summary based on metadata stored in MilvusDB and stores the summaries in "individual_report" collection, run the following command:
+```
+./run-demo.sh --run_individual_report_agent
 ```
 Note: Ensure that MilvusDB is properly set up and contains the necesseray data before running the agent.

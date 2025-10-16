@@ -17,7 +17,7 @@ def generate_end_of_day_report(tool_context: ToolContext) -> dict:
   
     hourly_agents_count = defaultdict(int)
     hourly_deliveries_count = defaultdict(int)
-    hourly_price_alert_count = defaultdict(int)
+    hourly_price_alert = defaultdict(lambda: False)
 
     overall_price_summaries = []
     overall_idle_summaries = []
@@ -49,7 +49,7 @@ def generate_end_of_day_report(tool_context: ToolContext) -> dict:
                 hourly_deliveries_count[event_hour] = max(hourly_deliveries_count[event_hour], deliveries_count)
 
                 if price_alert:
-                    hourly_price_alert_count[event_hour] += 1
+                    hourly_price_alert[event_hour] = True
             except Exception:
                 continue
 
@@ -61,19 +61,19 @@ def generate_end_of_day_report(tool_context: ToolContext) -> dict:
     for hour in sorted_hours:
         agents = hourly_agents_count[hour]
         deliveries = hourly_deliveries_count[hour]
-        alerts = hourly_price_alert_count[hour]
+        alerts = hourly_price_alert[hour]
         ratio = float(agents) / deliveries if deliveries > 0 else 1.0
         rows.append({
             'Hour': hour.strftime('%Y-%m-%d %H:%M'),
             'Maximum Available Agents': agents,
             'Maximum Deliveries Count': deliveries,
-            'Price Alert Count': alerts,
+            'Price Alert': alerts,
             'Agent to Delivery Ratio': f"{ratio:.2f}",
         })
 
     # Write to CSV file
     with open(output_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['Hour', 'Maximum Available Agents', 'Maximum Deliveries Count', 'Price Alert Count', 'Agent to Delivery Ratio']
+        fieldnames = ['Hour', 'Maximum Available Agents', 'Maximum Deliveries Count', 'Price Alert', 'Agent to Delivery Ratio']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
