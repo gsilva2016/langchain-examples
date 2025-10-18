@@ -795,17 +795,11 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
 
     return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
 
-def process_reid_embeddings(tracking_results_queue: queue.Queue,
-                            tracking_logs_q: queue.Queue,
-                            visualization_queue: queue.Queue,
-                            global_track_table: dict,
-                            milvus_manager: MilvusManager,
-                            collection_name: str = "reid_data"):
+def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):
     """
     Processes tracking results and inserts ReID embeddings into Milvus with global ID assignment.
     Also updates global track table and sends data for visualization.
     """
-    active_tracks = set()
     while True:
         try:
             frame_batch = tracking_results_queue.get(timeout=1)
@@ -833,7 +827,6 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue,
             global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources = insert_reid_embeddings(frame, milvus_manager, collection_name)
           
             for idx, global_track_id in enumerate(global_assigned_ids):
-                active_tracks.add(global_track_id)
                 with global_track_locks[global_track_id]:
                     if global_track_id not in global_track_table:
                         global_track_table[global_track_id] = {
@@ -864,6 +857,7 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue,
                         f"last_update={snapshot['last_update']}, "
                         f"seen in {list(snapshot['seen_in'])}"
                     ),
+                    "deliveries_count": random.randint(0, 100)
                 }
                 tracking_logs_q.put(event)
 
