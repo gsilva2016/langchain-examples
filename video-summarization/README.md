@@ -80,6 +80,7 @@ see [here](https://huggingface.co/docs/hub/en/security-tokens).
     REID_SIM_SCORE_THRESHOLD=0.67
     TOO_SIMILAR_THRESHOLD=0.96
     AMBIGUITY_MARGIN=0.02
+    DIVERGENCE_THRESHOLD=0.8
     ```
 
     For example:
@@ -103,6 +104,10 @@ see [here](https://huggingface.co/docs/hub/en/security-tokens).
     A value of 0.02 is interpreted as follows:
     
     This skips embeddings whose similarity score is in a "borderline" range. Specifically, if the similarity score is just below the main threshold (SIM_SCORE_THRESHOLD) but within a margin (AMBIGUITY_MARGIN).
+
+    DIVERGENCE_THRESHOLD=0.8
+
+    This value between 0 and 1 sets the minimum similarity required between the current mean embedding and the previous mean embedding for a particular global ID/track. If the similarity drops below this threshold, it indicates significant change (divergence) in the global ID/track's appearance, and only then stores the embedding in Milvus. This technique helps reduce the number of embeddings stored in the DB.
 
 ```
 # Hugging Face access token for model access
@@ -227,6 +232,7 @@ TRACKING_COLLECTION_NAME="tracking_logs"
 REID_SIM_SCORE_THRESHOLD=0.67
 TOO_SIMILAR_THRESHOLD=0.96
 AMBIGUITY_MARGIN=0.02
+DIVERGENCE_THRESHOLD=0.8
 
 # Interval for creating partitions in Milvus (in hours). If a partition for the current hour doesn't exist, it will be created.
 # This helps in organizing data and improving query performance.
