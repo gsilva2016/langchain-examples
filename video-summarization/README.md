@@ -342,6 +342,8 @@ python export_model.py text_generation --source_model meta-llama/Llama-3.2-3B-In
 
 Pipeline uses [OVMS (OpenVINO Model Server)](https://github.com/openvinotoolkit/model_server) for serving the VLM and LLM.
 
+For more information on OVMS parameters and usage with Docker, see the official documentation: [Deploying Model Server in Docker Container](https://docs.openvino.ai/2025/model-server/ovms_docs_deploying_server_docker.html)
+
 ## Embedding Model
 
 This pipeline uses BLIP for creating embeddings out of text and images. The subsequent vectors are stored in MIlvus DB. Model details are present in the configuration file `.env`.

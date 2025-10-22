@@ -25,7 +25,7 @@ fi
 conda install pip -y
 
 # Install dependencies
-curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/requirements.txt -o ovms_requirements.txt
+curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/3/demos/common/export_models/requirements.txt -o ovms_requirements.txt
 pip install -r ovms_requirements.txt
 
 if [ "$1" == "--skip" ]; then
@@ -35,7 +35,7 @@ else
     echo "Creating OpenVINO optimized model files for MiniCPM"
     huggingface-cli login --token $HUGGINGFACE_TOKEN
 
-    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
+    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/3/demos/common/export_models/export_model.py -o export_model.py
     mkdir -p models
 
     output=$(python export_model.py text_generation --source_model $VLM_MODEL --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $VLM_DEVICE --cache 2 --pipeline_type VLM --overwrite_models 2>&1 | tee /dev/tty)

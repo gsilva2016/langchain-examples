@@ -22,7 +22,7 @@ fi
 
 # Start Docker
 echo "Starting container: $OVMS_CONTAINER_NAME on port: $OVMS_REST_PORT."
-docker run -d --rm -v ${PWD}/models:/models -p $OVMS_GRPC_PORT:$OVMS_GRPC_PORT -p $OVMS_REST_PORT:$OVMS_REST_PORT --name $OVMS_CONTAINER_NAME --device /dev/dri --device /dev/accel/accel0 --group-add=$(stat -c "%g" /dev/dri/render* | head -n 1) openvino/model_server:latest-gpu --config_path /models/config.json --port $OVMS_GRPC_PORT --rest_port $OVMS_REST_PORT --log_level DEBUG
+docker run -d --rm -v ${PWD}/models:/models -p $OVMS_GRPC_PORT:$OVMS_GRPC_PORT -p $OVMS_REST_PORT:$OVMS_REST_PORT --name $OVMS_CONTAINER_NAME --device /dev/dri --device /dev/accel/accel0 --group-add=$(stat -c "%g" /dev/dri/render* | head -n 1) openvino/model_server:latest-gpu --config_path /models/config.json --port $OVMS_GRPC_PORT --rest_port $OVMS_REST_PORT
 
 # Wait for OVMS to be ready
 echo "Waiting for OVMS to become available..."
