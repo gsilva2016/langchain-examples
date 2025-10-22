@@ -186,7 +186,17 @@ if __name__ == '__main__':
 
         if run_vlm:
             print("[Main]: Starting chunk summary generation")
-            cs_future = pool.submit(generate_chunk_summaries, vlm_queue, milvus_summaries_queue, merger_queue, args.prompt, args.max_new_tokens, obj_detect_enabled)
+            cs_future = pool.submit(
+                generate_chunk_summaries,
+                vlm_queue,
+                milvus_summaries_queue,
+                merger_queue,
+                args.prompt,
+                args.max_new_tokens,
+                obj_detect_enabled,
+                milvus_manager,
+                True  # tracking_enabled
+            )
 
             print("[Main]: Starting chunk summary ingestion into Milvus")
             milvus_summaries_future = pool.submit(ingest_summaries_into_milvus, milvus_summaries_queue, milvus_manager, ov_blip_embedder)       

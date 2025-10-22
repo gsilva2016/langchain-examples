@@ -231,7 +231,8 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
     milvus_frames_queue.put(None)
 
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
-                             prompt: str, max_new_tokens: int, obj_detect_enabled: bool):
+                             prompt: str, max_new_tokens: int, obj_detect_enabled: bool, 
+                             milvus_manager: MilvusManager = None, tracking_enabled: bool = False):
     
     while True:        
         try:
@@ -278,6 +279,37 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                 "\nPlease use this information in your analysis."
             )
             content.append({"type": "text", "text": detection_text})
+        
+        # Add tracking information to enrich VLM context
+        # AS AN EXAMPLE:
+        # Current tracking context - 12 recent detections:
+        # Active tracked persons: 3 unique individuals
+        # Person 123abc: last seen at [100.0, 200.0, 150.0, 250.0] in chunk_001
+        # Person 456def: last seen at [300.0, 400.0, 350.0, 450.0] in chunk_002
+        # Person 789ghi: last seen at [500.0, 600.0, 550.0, 650.0] in chunk_003
+        # Consider this tracking context in your summary.
+        if tracking_enabled and milvus_manager:
+            try:
+                # Get current tracking info
+                tracking_info = get_tracking_info(milvus_manager, chunk_start_time=chunk["start_time"])
+                if tracking_info["active_global_ids"]:
+                    tracking_lines = [
+                        f"Current tracking context - {tracking_info['total_detections']} recent detections:",
+                        f"Active tracked persons: {len(tracking_info['active_global_ids'])} unique individuals"
+                    ]
+                    
+                    # Add specific track details
+                    for track_id in list(tracking_info["active_global_ids"]):
+                        source_info = tracking_info["track_sources"].get(track_id, {})
+                        bbox = tracking_info["track_locations"].get(track_id, [])
+                        if bbox:
+                            bbox_str = f"[{', '.join([f'{v:.1f}' for v in bbox])}]"
+                            tracking_lines.append(f"Person {track_id}: last seen at {bbox_str} in {source_info.get('chunk_id', 'unknown')}")
+                    
+                    tracking_text = "\n".join(tracking_lines) + "\nConsider this tracking context in your summary."
+                    content.append({"type": "text", "text": tracking_text})
+            except Exception as e:
+                print(f"[VLM]: Failed to get tracking info: {e}")
             
         # Prepare the text prompt content for the VLM request
         content.append({"type": "text", "text": prompt})
@@ -622,6 +654,43 @@ def extract_frame_from_video(chunk_path, frame_id):
     if not ret:
         raise ValueError(f"Could not read frame {frame_id} from {chunk_path}")
     return frame
+
+def get_tracking_info(milvus_manager: MilvusManager, chunk_start_time: str, 
+                      collection_name: str = "reid_data") -> dict:
+    """
+    Probe Milvus by timestamp for tracking information to enrich VLM context
+    """
+    # Use chunk_start_time for filtering collection
+    filter_expr = f'metadata["timestamp"] >= "{chunk_start_time}" and metadata["mode"] == "{collection_name}"'
+
+    results = milvus_manager.query(
+        collection_name=collection_name,
+        filter=filter_expr,
+        output_fields=["metadata"])
+    
+    # Process results into structured tracking dictionary
+    tracking_summary = {
+        "active_global_ids": set(),
+        "track_locations": {},
+        "track_sources": {},
+        "total_detections": len(results) if isinstance(results, list) else 0
+    }
+    
+    if isinstance(results, list):
+        for result in results:
+            metadata = result.get("metadata", {})
+            global_id = metadata.get("global_track_id")
+            if global_id:
+                tracking_summary["active_gloval_ids"].add(global_id)
+                tracking_summary["track_locations"][global_id] = metadata.get("bbox", [])
+                tracking_summary["track_sources"][global_id] = {
+                    "video_path": metadata.get("video_path"),
+                    "chunk_id": metadata.get("chunk_id"),
+                    "frame_id": metadata.get("frame_id"),
+                    "timestamp": metadata.get("timestamp")
+                }
+    
+    return tracking_summary
 
 def visualize_tracking_data(visualization_queue: queue.Queue, tracker_dim: tuple = (700, 450)):
     writers = {}
