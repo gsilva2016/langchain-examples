@@ -285,13 +285,19 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         # Current tracking context - 12 recent detections:
         # Active tracked persons: 3 unique individuals
         # Person 123abc: last seen at [100.0, 200.0, 150.0, 250.0] in chunk_001
-        # Person 456def: last seen at [300.0, 400.0, 350.0, 450.0] in chunk_002
-        # Person 789ghi: last seen at [500.0, 600.0, 550.0, 650.0] in chunk_003
+        # Person 456def: last seen at [300.0, 400.0, 350.0, 450.0] in chunk_001
         # Consider this tracking context in your summary.
         if tracking_enabled and milvus_manager:
+            print("[VLM]: adding tracking info")
             try:
                 # Get current tracking info
-                tracking_info = get_tracking_info(milvus_manager, chunk_start_time=chunk["start_time"])
+                tracking_info = get_tracking_info(
+                    milvus_manager,
+                    chunk_start_time=chunk["start_time"],
+                    video_path=chunk["chunk_path"]
+                )
+
+                print("[VLM]:", tracking_info)
                 if tracking_info["active_global_ids"]:
                     tracking_lines = [
                         f"Current tracking context - {tracking_info['total_detections']} recent detections:",
@@ -306,11 +312,14 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                             bbox_str = f"[{', '.join([f'{v:.1f}' for v in bbox])}]"
                             tracking_lines.append(f"Person {track_id}: last seen at {bbox_str} in {source_info.get('chunk_id', 'unknown')}")
                     
-                    tracking_text = "\n".join(tracking_lines) + "\nConsider this tracking context in your summary."
+                    tracking_text = ("\n".join(tracking_lines) +
+                        "\nConsider this tracking context in your summary. If specifying a person, please denote them by their global id.")
+
+                    print("[VLM]:", tracking_text)
                     content.append({"type": "text", "text": tracking_text})
             except Exception as e:
                 print(f"[VLM]: Failed to get tracking info: {e}")
-            
+                
         # Prepare the text prompt content for the VLM request
         content.append({"type": "text", "text": prompt})
 
@@ -656,13 +665,18 @@ def extract_frame_from_video(chunk_path, frame_id):
     return frame
 
 def get_tracking_info(milvus_manager: MilvusManager, chunk_start_time: str, 
-                      collection_name: str = "reid_data") -> dict:
+                      video_path: str, collection_name: str = "reid_data") -> dict:
     """
-    Probe Milvus by timestamp for tracking information to enrich VLM context
+    Probe Milvus DB for tracking information to enrich VLM context
     """
     # Use chunk_start_time for filtering collection
-    filter_expr = f'metadata["timestamp"] >= "{chunk_start_time}" and metadata["mode"] == "{collection_name}"'
-
+    # filter_expr = (
+    #     f'metadata["timestamp"] >= "{chunk_start_time}" and '
+    #     f'metadata["mode"] == "{collection_name}" and '
+    #     f'metadata["video_path"] == "{video_path}"'
+    # )
+    filter_expr = f'metadata["chunk_path"] == "{video_path}"'
+    
     results = milvus_manager.query(
         collection_name=collection_name,
         filter=filter_expr,
@@ -681,7 +695,7 @@ def get_tracking_info(milvus_manager: MilvusManager, chunk_start_time: str,
             metadata = result.get("metadata", {})
             global_id = metadata.get("global_track_id")
             if global_id:
-                tracking_summary["active_gloval_ids"].add(global_id)
+                tracking_summary["active_global_ids"].add(global_id)
                 tracking_summary["track_locations"][global_id] = metadata.get("bbox", [])
                 tracking_summary["track_sources"][global_id] = {
                     "video_path": metadata.get("video_path"),
