@@ -23,9 +23,13 @@ class RAG:
         
         self.collection_name = collection_name
         
-        if self.milvus_manager.milvus_client.has_collection(collection_name):
+        milvus_client = self.milvus_manager._get_client()
+        if milvus_client is None:
+            raise ConnectionError("Failed to connect to Milvus server.")
+
+        if milvus_client.has_collection(collection_name):
             print(f"Collection {collection_name} already exists.")
-            self.milvus_manager.milvus_client.load_collection(collection_name)
+            milvus_client.load_collection(collection_name)
         else:
             raise ValueError(f"Collection {collection_name} does not exist.")
 
