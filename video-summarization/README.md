@@ -80,6 +80,7 @@ see [here](https://huggingface.co/docs/hub/en/security-tokens).
     REID_SIM_SCORE_THRESHOLD=0.67
     TOO_SIMILAR_THRESHOLD=0.96
     AMBIGUITY_MARGIN=0.02
+    DIVERGENCE_THRESHOLD=0.8
     ```
 
     For example:
@@ -104,6 +105,10 @@ see [here](https://huggingface.co/docs/hub/en/security-tokens).
     
     This skips embeddings whose similarity score is in a "borderline" range. Specifically, if the similarity score is just below the main threshold (SIM_SCORE_THRESHOLD) but within a margin (AMBIGUITY_MARGIN).
 
+    DIVERGENCE_THRESHOLD=0.8
+
+    This value between 0 and 1 sets the minimum similarity required between the current mean embedding and the previous mean embedding for a particular global ID/track. If the similarity drops below this threshold, it indicates significant change (divergence) in the global ID/track's appearance, and only then stores the embedding in Milvus. This technique helps reduce the number of embeddings stored in the DB.
+
 ```
 # Hugging Face access token for model access
 HUGGINGFACE_TOKEN=
@@ -112,8 +117,10 @@ HUGGINGFACE_TOKEN=
 CONDA_ENV_NAME=ovlangvidsumm
 
 # OVMS endpoint for all models
-OVMS_CONDA_ENV_NAME=ovms_env
 OVMS_ENDPOINT="http://localhost:8013/v3/chat/completions"
+OVMS_GRPC_PORT=9013
+OVMS_CONTAINER_NAME="ovms_container"
+OVMS_CONDA_ENV_NAME="ovms_env"
 
 ####### Sub Module Status
 # If False, Doesn't run MiniCPM, LLAMA pipelines. 
@@ -225,6 +232,7 @@ TRACKING_COLLECTION_NAME="tracking_logs"
 REID_SIM_SCORE_THRESHOLD=0.67
 TOO_SIMILAR_THRESHOLD=0.96
 AMBIGUITY_MARGIN=0.02
+DIVERGENCE_THRESHOLD=0.8
 
 # Interval for creating partitions in Milvus (in hours). If a partition for the current hour doesn't exist, it will be created.
 # This helps in organizing data and improving query performance.
@@ -283,6 +291,21 @@ command can be used to skip the re-install of dependencies.
 ./install.sh --skip
 ```
 
+Note: If your system includes an NPU and you plan to use it for accelerated inference, you may need to update your NPU drivers.
+To verify that the NPU is available to OpenVINO, activate the conda environment specified in your `.env` file and run:
+
+```python
+from openvino.runtime import Core
+core = Core()
+print(core.available_devices)
+```
+
+This will print a list of available devices, such as `['CPU', 'GPU', 'NPU']`.  
+If `"NPU"` does not appear in the list, even though your hardware supports it, you likely need to install or update your NPU drivers.  
+Download and install the latest drivers from:  
+[https://github.com/intel/linux-npu-driver/releases](https://github.com/intel/linux-npu-driver/releases)
+
+
 ## Convert and Save Optimized MiniCPM-V-2_6 VLM and Llama-3.2-3B LLM
 
 This section can be skipped if you ran `install.sh` the first time. The `install.sh` script runs this command as part of 
@@ -318,6 +341,8 @@ python export_model.py text_generation --source_model meta-llama/Llama-3.2-3B-In
 ## Model Server
 
 Pipeline uses [OVMS (OpenVINO Model Server)](https://github.com/openvinotoolkit/model_server) for serving the VLM and LLM.
+
+For more information on OVMS parameters and usage with Docker, see the official documentation: [Deploying Model Server in Docker Container](https://docs.openvino.ai/2025/model-server/ovms_docs_deploying_server_docker.html)
 
 ## Embedding Model
 

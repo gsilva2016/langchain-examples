@@ -7,8 +7,10 @@ if [ -z "$HUGGINGFACE_TOKEN" ]; then
     exit 1
 fi
 
-echo "Install OpenVINO Model Server (OVMS) on baremetal"
+echo "Install OpenVINO Model Server (OVMS) docker."
+docker pull openvino/model_server:latest-gpu
 
+# Install ovms enviornment for model conversion
 source activate-conda.sh
 activate_conda
 
@@ -23,20 +25,8 @@ fi
 conda install pip -y
 
 # Install dependencies
-sudo apt update -y && sudo apt install -y libxml2 curl
-curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/requirements.txt -o ovms_requirements.txt
-pip install "Jinja2==3.1.6" "MarkupSafe==3.0.2" "huggingface_hub"
+curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/3/demos/common/export_models/requirements.txt -o ovms_requirements.txt
 pip install -r ovms_requirements.txt
-
-# Download OVMS
-export PATH=$PATH:${PWD}/ovms/bin
-if command -v ovms &> /dev/null; then
-    echo "OpenVINO Model Server (OVMS) is already installed."
-else
-    echo "Downloading OpenVINO Model Server (OVMS)..."  
-    wget https://github.com/openvinotoolkit/model_server/releases/download/v2025.1/ovms_ubuntu24_python_on.tar.gz
-    tar -xzvf ovms_ubuntu24_python_on.tar.gz
-fi
 
 if [ "$1" == "--skip" ]; then
     echo "Skipping OpenVINO optimized model file creation"
@@ -45,7 +35,7 @@ else
     echo "Creating OpenVINO optimized model files for MiniCPM"
     huggingface-cli login --token $HUGGINGFACE_TOKEN
 
-    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/1/demos/common/export_models/export_model.py -o export_model.py
+    curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/releases/2025/3/demos/common/export_models/export_model.py -o export_model.py
     mkdir -p models
 
     output=$(python export_model.py text_generation --source_model $VLM_MODEL --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device $VLM_DEVICE --cache 2 --pipeline_type VLM --overwrite_models 2>&1 | tee /dev/tty)

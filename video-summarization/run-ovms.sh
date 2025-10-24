@@ -1,56 +1,28 @@
 #!/bin/bash
-
 source .env
-
-source activate-conda.sh
-activate_conda
-
-# Activate OVMS conda env
-conda activate $OVMS_CONDA_ENV_NAME
-
-if [ $? -ne 0 ]; then
-    echo "Conda environment $OVMS_CONDA_ENV_NAME activation has failed. Please check."
-    exit 1
-fi
 
 # Read OVMS endpoint and port from .env
 if [ -z "$OVMS_ENDPOINT" ]; then
     echo "OVMS_ENDPOINT is not set. Please set it in the .env file."
     exit 1
 fi
+OVMS_REST_PORT=$(echo "$OVMS_ENDPOINT" | sed -n 's/.*:\([0-9]\+\).*/\1/p')
 
-OVMS_PORT=$(echo "$OVMS_ENDPOINT" | sed -n 's/.*:\([0-9]\+\).*/\1/p')
-
-if [ -z "$OVMS_PORT" ]; then
-    echo "Could not determine OVMS_PORT from OVMS_ENDPOINT ($OVMS_ENDPOINT)."
+if [ -z "$OVMS_REST_PORT" ]; then
+    echo "Could not determine OVMS_REST_PORT from OVMS_ENDPOINT ($OVMS_ENDPOINT)."
     exit 1
 fi
-
 OVMS_URL=$(echo "$OVMS_ENDPOINT" | sed -E 's#(https?://[^:/]+:[0-9]+).*#\1#')
 
-# Check if OVMS is already running
-if lsof -i:$OVMS_PORT | grep -q LISTEN; then
-    # Kill if already running
-    echo "Terminating existing OVMS process on port $OVMS_PORT."
-    PID=$(lsof -t -i:$OVMS_PORT)
-    if [ -n "$PID" ]; then
-        kill -9 $PID
-        echo "Ended OVMS process with PID: $PID"
-    fi
+# Kill any hanging ovms containers
+if docker ps --filter "name=$OVMS_CONTAINER_NAME" --format '{{.Names}}' | grep -q $OVMS_CONTAINER_NAME; then
+    echo "Container is already running. Stopping container and rerunning..."
+    docker stop $OVMS_CONTAINER_NAME
 fi
 
-echo "Starting OVMS on port $OVMS_PORT."
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${PWD}/ovms/lib
-export PATH=$PATH:${PWD}/ovms/bin
-CONDA_PYTHON_PATH="$(python -c 'import site; print(site.getsitepackages()[0])')"
-# conda python path is **explicitly** needed for OVMS to find the installed Python packages in conda, it is not visible otherwise 
-# without this, OVMS doesnt find jinja2 and other packages installed in conda environment, if Jinja2 isn't found - we will get the following warning:
-# --Warning: Chat templates not loaded-- while starting OVMS. This causes failures for LLAMA inference requests
-export PYTHONPATH=$PYTHONPATH:${PWD}/ovms/lib/python:$CONDA_PYTHON_PATH
-
-ovms --rest_port $OVMS_PORT --config_path ./models/config.json &
-OVMS_PID=$!
-echo "Started OVMS with PID: $OVMS_PID"
+# Start Docker
+echo "Starting container: $OVMS_CONTAINER_NAME on port: $OVMS_REST_PORT."
+docker run -d --rm -v ${PWD}/models:/models -p $OVMS_GRPC_PORT:$OVMS_GRPC_PORT -p $OVMS_REST_PORT:$OVMS_REST_PORT --name $OVMS_CONTAINER_NAME --device /dev/dri --device /dev/accel/accel0 --group-add=$(stat -c "%g" /dev/dri/render* | head -n 1) openvino/model_server:latest-gpu --config_path /models/config.json --port $OVMS_GRPC_PORT --rest_port $OVMS_REST_PORT
 
 # Wait for OVMS to be ready
 echo "Waiting for OVMS to become available..."
@@ -64,7 +36,7 @@ for i in {1..4}; do
     fi
     if [ $i -eq 4 ]; then
         echo "OVMS did not become ready in time. Please check the logs for errors."
-        kill $OVMS_PID
+	docker stop $OVMS_CONTAINER_NAME	
         exit 1
     fi
 done

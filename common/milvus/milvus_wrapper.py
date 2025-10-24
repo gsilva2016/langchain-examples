@@ -56,7 +56,7 @@ class MilvusManager:
                 field_name="vector",
                 index_type="FLAT",
                 index_name="vector_index",
-                metric_type="COSINE",
+                metric_type="COSINE"
             )
 
             client.create_collection(
@@ -127,7 +127,7 @@ class MilvusManager:
             if not client.has_collection(collection_name):
                 raise ValueError(f"Collection {collection_name} does not exist.")
 
-            search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+            search_params = {"metric_type": "COSINE"}
 
             if partition_names:
                 existing_partitions = client.list_partitions(collection_name)
