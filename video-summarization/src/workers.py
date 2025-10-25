@@ -843,8 +843,9 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                             global_track_table[global_track_id]["seen_in"].add(global_track_sources[idx])
 
                     snapshot = dict(global_track_table[global_track_id])
-                
-                hour_top = datetime.now().replace(minute=0, second=0, microsecond=0)
+                    
+                event_dt = datetime.now()
+                hour_top = event_dt.replace(minute=0, second=0, microsecond=0)
                 hour_string = hour_top.strftime("%Y-%m-%d %H:%M:%S")
 
                 # Assign a count only if not already set for this hour
