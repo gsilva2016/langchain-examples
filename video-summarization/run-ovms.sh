@@ -22,14 +22,14 @@ fi
 
 # Check if NPU is selected in any .env parameter
 NPU_DEVICE=""
-if grep -q "NPU" .env; then
+if grep -E '^[A-Z0-9_]+="NPU"' .env > /dev/null; then
     NPU_DEVICE="--device /dev/accel/accel0"
 fi
 
 # Check if GPU is selected in any .env parameter
 GPU_DEVICE=""
 GROUP_ADD=""
-if grep -q "GPU" .env; then
+if grep -E '^[A-Z0-9_]+="GPU"' .env > /dev/null; then
     GPU_DEVICE="--device /dev/dri"
     GROUP_ADD="--group-add=$(stat -c "%g" /dev/dri/render* | head -n 1)"
 fi
