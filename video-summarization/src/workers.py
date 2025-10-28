@@ -63,143 +63,6 @@ global_mean = {}
 local_state_lock = threading.Lock()
 global_mean_lock = threading.Lock()
 
-
-def scale_bbox_coordinates(bbox, source_width, source_height, target_width, target_height):
-    """
-    Scale bounding box coordinates from source resolution to target resolution.
-    
-    Args:
-        bbox (list): Bounding box coordinates [x1, y1, x2, y2] in source resolution
-        source_width (int): Width of source resolution
-        source_height (int): Height of source resolution
-        target_width (int): Width of target resolution
-        target_height (int): Height of target resolution
-        
-    Returns:
-        list: Scaled bounding box coordinates [x1, y1, x2, y2] in target resolution
-    """
-    if not bbox or len(bbox) != 4:
-        return bbox
-    
-    # Calculate scaling factors
-    x_scale = target_width / source_width
-    y_scale = target_height / source_height
-    
-    # Scale coordinates
-    x1, y1, x2, y2 = bbox
-    scaled_bbox = [
-        x1 * x_scale,
-        y1 * y_scale, 
-        x2 * x_scale,
-        y2 * y_scale
-    ]
-    
-    return scaled_bbox
-
-
-def analyze_movement_patterns(detections):
-    """
-    Analyze movement patterns from a list of detections for a single person.
-    
-    Args:
-        detections (list): List of detection dictionaries with frame_id and bbox
-        
-    Returns:
-        dict: Movement analysis including direction, speed, and behavior patterns
-    """
-    if len(detections) < 2:
-        return {"movement_summary": "insufficient data"}
-    
-    # Sort by frame_id to ensure chronological order
-    sorted_detections = sorted(detections, key=lambda x: x["frame_id"] or 0)
-    
-    # Calculate center points and movements
-    movements = []
-    total_distance = 0
-    center_points = []
-    
-    for detection in sorted_detections:
-        bbox = detection["bbox"]
-        if bbox and len(bbox) == 4:
-            # Calculate center point of bounding box
-            center_x = (bbox[0] + bbox[2]) / 2
-            center_y = (bbox[1] + bbox[3]) / 2
-            center_points.append((center_x, center_y, detection["frame_id"]))
-    
-    if len(center_points) < 2:
-        return {"movement_summary": "insufficient spatial data"}
-    
-    # Analyze movement between consecutive detections
-    for i in range(1, len(center_points)):
-        prev_x, prev_y, prev_frame = center_points[i-1]
-        curr_x, curr_y, curr_frame = center_points[i]
-        
-        # Calculate distance and direction
-        dx = curr_x - prev_x
-        dy = curr_y - prev_y
-        distance = (dx**2 + dy**2)**0.5
-        total_distance += distance
-        
-        # Calculate frame difference for speed
-        frame_diff = curr_frame - prev_frame
-        speed = distance / max(frame_diff, 1)  # pixels per frame
-        
-        movements.append({
-            "dx": dx, "dy": dy, 
-            "distance": distance, 
-            "speed": speed,
-            "frame_span": frame_diff
-        })
-    
-    # Analyze overall patterns
-    avg_speed = sum(m["speed"] for m in movements) / len(movements)
-    
-    # Determine dominant direction
-    total_dx = sum(m["dx"] for m in movements)
-    total_dy = sum(m["dy"] for m in movements)
-    
-    # Classify movement direction
-    direction = "stationary"
-    if abs(total_dx) > 10 or abs(total_dy) > 10:  # threshold for significant movement
-        if abs(total_dx) > abs(total_dy):
-            direction = "right" if total_dx > 0 else "left"
-        else:
-            direction = "down" if total_dy > 0 else "up"
-    
-    # Classify speed
-    speed_category = "slow"
-    if avg_speed > 5:
-        speed_category = "fast"
-    elif avg_speed > 2:
-        speed_category = "moderate"
-    
-    # Detect loitering (low movement over many frames)
-    frame_span = sorted_detections[-1]["frame_id"] - sorted_detections[0]["frame_id"]
-    is_loitering = total_distance < 50 and frame_span > 10  # low movement over time
-    
-    # Generate movement summary
-    summary_parts = []
-    if direction != "stationary":
-        summary_parts.append(f"moving {direction}")
-    if speed_category != "slow":
-        summary_parts.append(f"{speed_category} movement")
-    if is_loitering:
-        summary_parts.append("loitering detected")
-    
-    movement_summary = ", ".join(summary_parts) if summary_parts else "minimal movement"
-    
-    return {
-        "movement_summary": movement_summary,
-        "direction": direction,
-        "speed_category": speed_category,
-        "avg_speed": round(avg_speed, 2),
-        "total_distance": round(total_distance, 2),
-        "is_loitering": is_loitering,
-        "frame_span": frame_span,
-        "detection_count": len(detections)
-    }
-
-        
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
     summary_merger = SummaryMergeScoreTool(api_base=OVMS_ENDPOINT)
 
@@ -426,12 +289,6 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             content.append({"type": "text", "text": detection_text})
         
         # Add tracking information to enrich VLM context
-        # AS AN EXAMPLE:
-        # Current tracking context - 12 recent detections:
-        # Active tracked persons: 3 unique individuals
-        # Person 123abc: last seen at [100.0, 200.0, 150.0, 250.0] in chunk_001
-        # Person 456def: last seen at [300.0, 400.0, 350.0, 450.0] in chunk_001
-        # Consider this tracking context in your summary.
         if tracking_enabled and milvus_manager:
             print("[VLM]: adding tracking info")
             try:
@@ -452,12 +309,14 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                     # Add specific track details with chronological frame information
                     for track_id in list(tracking_info["active_global_ids"]):
                         detections = tracking_info["track_detections"].get(track_id, [])
+
                         if detections:
                             # Create chronological description for this person
                             detection_descriptions = []
                             for detection in detections:
                                 frame_id = detection["frame_id"]
                                 bbox = detection["bbox"]
+
                                 if bbox:
                                     # Scale bounding box from tracker resolution to VLM resolution
                                     scaled_bbox = scale_bbox_coordinates(bbox, TRACKER_WIDTH, TRACKER_HEIGHT, VLM_RESOLUTION_X, VLM_RESOLUTION_Y)
@@ -849,7 +708,7 @@ def get_tracking_info(milvus_manager: MilvusManager, chunk_start_time: str,
     # Process results into structured tracking dictionary
     tracking_summary = {
         "active_global_ids": set(),
-        "track_detections": {},  # Changed to store all detections per person
+        "track_detections": {},
         "total_detections": len(results) if isinstance(results, list) else 0
     }
     
@@ -878,6 +737,134 @@ def get_tracking_info(milvus_manager: MilvusManager, chunk_start_time: str,
         )
     
     return tracking_summary
+
+def scale_bbox_coordinates(bbox, source_width, source_height, target_width, target_height):
+    """
+    Scale bounding box coordinates from source resolution to target resolution.
+    
+    Args:
+        bbox (list): Bounding box coordinates [x1, y1, x2, y2] in source resolution
+        source_width (int): Width of source resolution
+        source_height (int): Height of source resolution
+        target_width (int): Width of target resolution
+        target_height (int): Height of target resolution
+        
+    Returns:
+        list: Scaled bounding box coordinates [x1, y1, x2, y2] in target resolution
+    """
+    if not bbox or len(bbox) != 4:
+        return bbox
+    
+    # Get scaling factors
+    x_scale = target_width / source_width
+    y_scale = target_height / source_height
+    
+    # Scale coordinates
+    x1, y1, x2, y2 = bbox
+    scaled_bbox = [
+        x1 * x_scale,
+        y1 * y_scale, 
+        x2 * x_scale,
+        y2 * y_scale
+    ]
+    
+    return scaled_bbox
+
+def analyze_movement_patterns(detections):
+    """
+    Analyze movement patterns from a list of detections for a single person.    
+    """
+    if len(detections) < 2:
+        return {"movement_summary": "insufficient data"}
+    
+    # Sort by frame_id to ensure chronological order
+    sorted_detections = sorted(detections, key=lambda x: x["frame_id"] or 0)
+    
+    # Calculate center points and movements
+    movements = []
+    total_distance = 0
+    center_points = []
+    
+    for detection in sorted_detections:
+        bbox = detection["bbox"]
+        if bbox and len(bbox) == 4:
+            # Calculate center point of bounding box
+            center_x = (bbox[0] + bbox[2]) / 2
+            center_y = (bbox[1] + bbox[3]) / 2
+            center_points.append((center_x, center_y, detection["frame_id"]))
+    
+    if len(center_points) < 2:
+        return {"movement_summary": "insufficient spatial data"}
+    
+    # Analyze movement between consecutive detections
+    for i in range(1, len(center_points)):
+        prev_x, prev_y, prev_frame = center_points[i-1]
+        curr_x, curr_y, curr_frame = center_points[i]
+        
+        # Calculate distance and direction
+        dx = curr_x - prev_x
+        dy = curr_y - prev_y
+        distance = (dx**2 + dy**2)**0.5
+        total_distance += distance
+        
+        # Calculate frame difference for speed
+        frame_diff = curr_frame - prev_frame
+        speed = distance / max(frame_diff, 1)  # pixels per frame
+        
+        movements.append({
+            "dx": dx, "dy": dy, 
+            "distance": distance, 
+            "speed": speed,
+            "frame_span": frame_diff
+        })
+    
+    # Analyze overall patterns
+    avg_speed = sum(m["speed"] for m in movements) / len(movements)
+    
+    # Determine dominant direction
+    total_dx = sum(m["dx"] for m in movements)
+    total_dy = sum(m["dy"] for m in movements)
+    
+    # Classify movement direction MAY NEED TO TWEAK THRESHOLD
+    direction = "stationary"
+    if abs(total_dx) > 10 or abs(total_dy) > 10:  # threshold for significant movement
+        if abs(total_dx) > abs(total_dy):
+            direction = "right" if total_dx > 0 else "left"
+        else:
+            direction = "down" if total_dy > 0 else "up"
+    
+    # Classify speed TO DO Not sure how to determine thresholds generically
+    speed_category = "slow"
+    if avg_speed > 5:
+        speed_category = "fast"
+    elif avg_speed > 2:
+        speed_category = "moderate"
+    
+    # Detect loitering 
+    frame_span = sorted_detections[-1]["frame_id"] - sorted_detections[0]["frame_id"]
+    is_loitering = total_distance < 50 and frame_span > 10  
+    
+    # Generate movement summary
+    summary_parts = []
+    if direction != "stationary":
+        summary_parts.append(f"moving {direction}")
+    if speed_category != "slow":
+        summary_parts.append(f"{speed_category} movement")
+    if is_loitering:
+        summary_parts.append("loitering detected")
+    
+    movement_summary = ", ".join(summary_parts) if summary_parts else "minimal movement"
+    
+    return {
+        "movement_summary": movement_summary,
+        "direction": direction,
+        "speed_category": speed_category,
+        "avg_speed": round(avg_speed, 2),
+        "total_distance": round(total_distance, 2),
+        "is_loitering": is_loitering,
+        "frame_span": frame_span,
+        "detection_count": len(detections)
+    }
 
 def visualize_tracking_data(visualization_queue: queue.Queue, tracker_dim: tuple = (700, 450)):
     writers = {}
@@ -1129,5 +1116,4 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
         global_mean.clear()
 
     print("[ReID Processor]: Completed batches and flushed remaining mean embeddings.")
-
 
