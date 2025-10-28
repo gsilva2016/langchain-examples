@@ -43,6 +43,15 @@ PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 
 TRACKING_LOGS_GENERATION_TIME_SECS = float(os.environ.get("TRACKING_LOGS_GENERATION_TIME_SECS", 1.0))
 MAX_EVENTS_BATCH = int(os.environ.get("MAX_EVENTS_BATCH", 10))
 
+# Resolution configurations
+VLM_RESOLUTION_X = int(os.environ.get("RESOLUTION_X", 480))
+VLM_RESOLUTION_Y = int(os.environ.get("RESOLUTION_Y", 270))
+TRACKER_WIDTH = int(os.environ.get("TRACKER_WIDTH", 700))
+TRACKER_HEIGHT = int(os.environ.get("TRACKER_HEIGHT", 450))
+
+# Movement analysis configuration
+ENABLE_MOVEMENT_ANALYSIS = os.environ.get("ENABLE_MOVEMENT_ANALYSIS", "TRUE").upper() == "TRUE"
+
 global_track_locks = defaultdict(threading.Lock)
 global_assignment_lock = threading.Lock()
 
@@ -53,6 +62,142 @@ global_mean = {}
 # Locks for concurrency
 local_state_lock = threading.Lock()
 global_mean_lock = threading.Lock()
+
+
+def scale_bbox_coordinates(bbox, source_width, source_height, target_width, target_height):
+    """
+    Scale bounding box coordinates from source resolution to target resolution.
+    
+    Args:
+        bbox (list): Bounding box coordinates [x1, y1, x2, y2] in source resolution
+        source_width (int): Width of source resolution
+        source_height (int): Height of source resolution
+        target_width (int): Width of target resolution
+        target_height (int): Height of target resolution
+        
+    Returns:
+        list: Scaled bounding box coordinates [x1, y1, x2, y2] in target resolution
+    """
+    if not bbox or len(bbox) != 4:
+        return bbox
+    
+    # Calculate scaling factors
+    x_scale = target_width / source_width
+    y_scale = target_height / source_height
+    
+    # Scale coordinates
+    x1, y1, x2, y2 = bbox
+    scaled_bbox = [
+        x1 * x_scale,
+        y1 * y_scale, 
+        x2 * x_scale,
+        y2 * y_scale
+    ]
+    
+    return scaled_bbox
+
+
+def analyze_movement_patterns(detections):
+    """
+    Analyze movement patterns from a list of detections for a single person.
+    
+    Args:
+        detections (list): List of detection dictionaries with frame_id and bbox
+        
+    Returns:
+        dict: Movement analysis including direction, speed, and behavior patterns
+    """
+    if len(detections) < 2:
+        return {"movement_summary": "insufficient data"}
+    
+    # Sort by frame_id to ensure chronological order
+    sorted_detections = sorted(detections, key=lambda x: x["frame_id"] or 0)
+    
+    # Calculate center points and movements
+    movements = []
+    total_distance = 0
+    center_points = []
+    
+    for detection in sorted_detections:
+        bbox = detection["bbox"]
+        if bbox and len(bbox) == 4:
+            # Calculate center point of bounding box
+            center_x = (bbox[0] + bbox[2]) / 2
+            center_y = (bbox[1] + bbox[3]) / 2
+            center_points.append((center_x, center_y, detection["frame_id"]))
+    
+    if len(center_points) < 2:
+        return {"movement_summary": "insufficient spatial data"}
+    
+    # Analyze movement between consecutive detections
+    for i in range(1, len(center_points)):
+        prev_x, prev_y, prev_frame = center_points[i-1]
+        curr_x, curr_y, curr_frame = center_points[i]
+        
+        # Calculate distance and direction
+        dx = curr_x - prev_x
+        dy = curr_y - prev_y
+        distance = (dx**2 + dy**2)**0.5
+        total_distance += distance
+        
+        # Calculate frame difference for speed
+        frame_diff = curr_frame - prev_frame
+        speed = distance / max(frame_diff, 1)  # pixels per frame
+        
+        movements.append({
+            "dx": dx, "dy": dy, 
+            "distance": distance, 
+            "speed": speed,
+            "frame_span": frame_diff
+        })
+    
+    # Analyze overall patterns
+    avg_speed = sum(m["speed"] for m in movements) / len(movements)
+    
+    # Determine dominant direction
+    total_dx = sum(m["dx"] for m in movements)
+    total_dy = sum(m["dy"] for m in movements)
+    
+    # Classify movement direction
+    direction = "stationary"
+    if abs(total_dx) > 10 or abs(total_dy) > 10:  # threshold for significant movement
+        if abs(total_dx) > abs(total_dy):
+            direction = "right" if total_dx > 0 else "left"
+        else:
+            direction = "down" if total_dy > 0 else "up"
+    
+    # Classify speed
+    speed_category = "slow"
+    if avg_speed > 5:
+        speed_category = "fast"
+    elif avg_speed > 2:
+        speed_category = "moderate"
+    
+    # Detect loitering (low movement over many frames)
+    frame_span = sorted_detections[-1]["frame_id"] - sorted_detections[0]["frame_id"]
+    is_loitering = total_distance < 50 and frame_span > 10  # low movement over time
+    
+    # Generate movement summary
+    summary_parts = []
+    if direction != "stationary":
+        summary_parts.append(f"moving {direction}")
+    if speed_category != "slow":
+        summary_parts.append(f"{speed_category} movement")
+    if is_loitering:
+        summary_parts.append("loitering detected")
+    
+    movement_summary = ", ".join(summary_parts) if summary_parts else "minimal movement"
+    
+    return {
+        "movement_summary": movement_summary,
+        "direction": direction,
+        "speed_category": speed_category,
+        "avg_speed": round(avg_speed, 2),
+        "total_distance": round(total_distance, 2),
+        "is_loitering": is_loitering,
+        "frame_span": frame_span,
+        "detection_count": len(detections)
+    }
 
         
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
@@ -304,13 +449,32 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                         f"Active tracked persons: {len(tracking_info['active_global_ids'])} unique individuals"
                     ]
                     
-                    # Add specific track details
+                    # Add specific track details with chronological frame information
                     for track_id in list(tracking_info["active_global_ids"]):
-                        source_info = tracking_info["track_sources"].get(track_id, {})
-                        bbox = tracking_info["track_locations"].get(track_id, [])
-                        if bbox:
-                            bbox_str = f"[{', '.join([f'{v:.1f}' for v in bbox])}]"
-                            tracking_lines.append(f"Person {track_id}: last seen at {bbox_str} in {source_info.get('chunk_id', 'unknown')}")
+                        detections = tracking_info["track_detections"].get(track_id, [])
+                        if detections:
+                            # Create chronological description for this person
+                            detection_descriptions = []
+                            for detection in detections:
+                                frame_id = detection["frame_id"]
+                                bbox = detection["bbox"]
+                                if bbox:
+                                    # Scale bounding box from tracker resolution to VLM resolution
+                                    scaled_bbox = scale_bbox_coordinates(bbox, TRACKER_WIDTH, TRACKER_HEIGHT, VLM_RESOLUTION_X, VLM_RESOLUTION_Y)
+                                    bbox_str = f"[{', '.join([f'{v:.1f}' for v in scaled_bbox])}]"
+                                    detection_descriptions.append(f"detected at frame {frame_id} at location {bbox_str}")
+                            
+                            if detection_descriptions:
+                                chronological_desc = "; ".join(detection_descriptions)
+                                
+                                # Add movement analysis if enabled
+                                if ENABLE_MOVEMENT_ANALYSIS:
+                                    movement_analysis = analyze_movement_patterns(detections)
+                                    if movement_analysis["movement_summary"] != "insufficient data":
+                                        movement_desc = movement_analysis["movement_summary"]
+                                        chronological_desc += f" | Movement: {movement_desc}"
+                                
+                                tracking_lines.append(f"Person {track_id}: {chronological_desc}")
                     
                     tracking_text = ("\n".join(tracking_lines) +
                         "\nConsider this tracking context in your summary. If specifying a person, please denote them by their global id.")
@@ -685,8 +849,7 @@ def get_tracking_info(milvus_manager: MilvusManager, chunk_start_time: str,
     # Process results into structured tracking dictionary
     tracking_summary = {
         "active_global_ids": set(),
-        "track_locations": {},
-        "track_sources": {},
+        "track_detections": {},  # Changed to store all detections per person
         "total_detections": len(results) if isinstance(results, list) else 0
     }
     
@@ -696,13 +859,23 @@ def get_tracking_info(milvus_manager: MilvusManager, chunk_start_time: str,
             global_id = metadata.get("global_track_id")
             if global_id:
                 tracking_summary["active_global_ids"].add(global_id)
-                tracking_summary["track_locations"][global_id] = metadata.get("bbox", [])
-                tracking_summary["track_sources"][global_id] = {
-                    "video_path": metadata.get("video_path"),
-                    "chunk_id": metadata.get("chunk_id"),
+                
+                # Initialize list for this person if not exists
+                if global_id not in tracking_summary["track_detections"]:
+                    tracking_summary["track_detections"][global_id] = []
+                
+                # Add this detection to the person's list
+                tracking_summary["track_detections"][global_id].append({
                     "frame_id": metadata.get("frame_id"),
+                    "bbox": metadata.get("bbox", []),
                     "timestamp": metadata.get("timestamp")
-                }
+                })
+    
+    # Sort detections by frame_id for chronological order
+    for global_id in tracking_summary["track_detections"]:
+        tracking_summary["track_detections"][global_id].sort(
+            key=lambda x: x["frame_id"] if x["frame_id"] is not None else 0
+        )
     
     return tracking_summary
 
