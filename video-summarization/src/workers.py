@@ -254,6 +254,15 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         
         # Prepare the frames for the VLM request
         content = []
+        
+        # Add frame information as text context to ground the VLM response
+        frame_ids = chunk.get("frame_ids", [])
+        frame_info_text = f"You are analyzing {len(chunk['frames'])} sampled frames from this video chunk.\n"
+        frame_info_text += f"Frame IDs being analyzed: {', '.join(map(str, frame_ids))}\n"
+        frame_info_text += "Please reference these specific frame IDs in your analysis when describing activities or events.\n\n"
+        content.append({"type": "text", "text": frame_info_text})
+
+        # Convert frames to base64-encoded images for VLM input
         for frame in chunk["frames"]:
             img = Image.fromarray(frame)
             buffer = io.BytesIO()
