@@ -42,7 +42,9 @@ AMBIGUITY_MARGIN = float(os.environ.get("AMBIGUITY_MARGIN", 0.15))
 PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 1))
 TRACKING_LOGS_GENERATION_TIME_SECS = float(os.environ.get("TRACKING_LOGS_GENERATION_TIME_SECS", 1.0))
 MAX_EVENTS_BATCH = int(os.environ.get("MAX_EVENTS_BATCH", 10))
+EXIT_GAP_SECS = float(os.environ.get("EXIT_GAP_SECS", 3.0))
 
+# Global locks
 global_track_locks = defaultdict(threading.Lock)
 global_assignment_lock = threading.Lock()
 
@@ -53,6 +55,13 @@ global_mean = {}
 # Locks for concurrency
 local_state_lock = threading.Lock()
 global_mean_lock = threading.Lock()
+presence_lock = threading.Lock()
+
+presence_buffer = defaultdict(lambda: {
+    "entry_time": None,
+    "last_seen": None,
+    "last_camera": None
+})
 
         
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
@@ -129,7 +138,7 @@ def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager
                         "detected_objects": item.get("detected_objects", []),
                         "mode": "text",
                         "summary": item["chunk_summary"],
-                        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                        "db_entry_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     } for item in summaries
                 ]
 
@@ -176,9 +185,9 @@ def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: MilvusManage
                     "chunk_id": chunk["chunk_id"],
                     "frame_id": idx,
                     "start_time": chunk["start_time"],
-                    "end_time": chunk["start_time"],
+                    "end_time": chunk["end_time"],
                     "chunk_path": chunk["chunk_path"],
-                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "db_entry_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "mode": "image",
                     "detected_objects": str(objects)
                 })
@@ -245,6 +254,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         
         # Prepare the frames for the VLM request
         content = []
+        
         for frame in chunk["frames"]:
             img = Image.fromarray(frame)
             buffer = io.BytesIO()
@@ -354,13 +364,18 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
     # Generate chunks
     for doc in loader.lazy_load():
         print(f"[CHUNK LOADER]: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
+        
+        # String version of start and end times
+        chunk_start_time_str = doc.metadata["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(doc.metadata["start_time"], datetime) else str(doc.metadata["start_time"])
+        chunk_end_time_str = doc.metadata["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(doc.metadata["end_time"], datetime) else str(doc.metadata["end_time"])
+
         chunk = {
             "video_path": doc.metadata["source"],
             "chunk_id": doc.metadata["chunk_id"],
             "chunk_path": doc.metadata["chunk_path"],
             "chunk_metadata": doc.page_content,
-            "start_time": doc.metadata["start_time"],
-            "end_time": doc.metadata["end_time"],
+            "start_time": chunk_start_time_str,
+            "end_time": chunk_end_time_str,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "detected_objects": doc.metadata["detected_objects"]
         }
@@ -411,8 +426,6 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             vr = VideoReader(video_path, ctx=cpu(0))
             
             fps = vr.get_avg_fps() if hasattr(vr, 'get_avg_fps') else 30
-            # sample_interval = max(1, int(fps // reid_sampling_rate))
-            # print(f"--------------DeepSORT: Video FPS: {fps}, Sampling every {sample_interval} frames for ReID with rate {reid_sampling_rate}fps")
             
             if sampling_rate <= 1:
                 max_num_frames = int(len(vr))  # sample every frame
@@ -445,6 +458,11 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             # Preprocess frame for detection
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             
+            if isinstance(chunk["start_time"], datetime):
+                frame_video_time = chunk["start_time"] + timedelta(seconds=(frame_id / fps))
+            else:
+                frame_video_time = float(chunk["start_time"]) + (frame_id / fps)
+
             h, w = frame.shape[:2]
             input_image = detector.preprocess(frame)
 
@@ -509,8 +527,14 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 continue
             
             # Accumulate tracking results for this frame
+            
+            # String version of start and end times
+            chunk_start_time_str = chunk["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["start_time"], datetime) else str(chunk["start_time"])
+            chunk_end_time_str = chunk["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["end_time"], datetime) else str(chunk["end_time"])
+
             tracking_res = {
                 "frame_id": frame_id,
+                "frame_video_time": frame_video_time,
                 "chunk_id": chunk["chunk_id"],
                 "bboxes": bbox_xyxy.tolist(),
                 "object_class": ["person"] * len(bbox_xyxy),  
@@ -522,8 +546,8 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 ],
                 "video_path": chunk["video_path"],
                 "chunk_path": chunk["chunk_path"],
-                "start_time": chunk["start_time"],
-                "end_time": chunk["end_time"]
+                "start_time": chunk_start_time_str,
+                "end_time": chunk_end_time_str
             }
         
             chunk_tracking_results.append(tracking_res)
@@ -588,8 +612,12 @@ def process_tracking_logs(tracking_logs_q: queue.Queue, milvus_manager: MilvusMa
             gid = event["global_track_id"]
             now = time.time()
 
+            event_type = event.get("event_type", "")
+            if event_type in ("entry", "exit"):
+                events.append(event)
+                
             # Process event only if greater than TRACKING_LOGS_GENERATION_TIME_SECS, prevents too many events
-            if now - last_event_time[gid] >= TRACKING_LOGS_GENERATION_TIME_SECS:
+            elif now - last_event_time[gid] >= TRACKING_LOGS_GENERATION_TIME_SECS:
                 last_event_time[gid] = now
                 events.append(event)
 
@@ -772,7 +800,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                     "start_time": frame["start_time"],
                     "end_time": frame["end_time"],
                     "mode": "reid",
-                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "db_entry_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "bbox": frame["bboxes"][i] if i < len(frame["bboxes"]) else [],
                     "object_class": frame["object_class"][i] if i < len(frame["object_class"]) else None,
                     "frame_id": frame_id
@@ -811,67 +839,126 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         flush_metadatas.append({
                             "global_track_id": gid,
                             "mode": "reid",
-                            "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                            "db_entry_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             "event": "final_flush"
                         })
                     if flush_embeddings:
-                        milvus_manager.insert_data(collection_name=collection_name, vectors=flush_embeddings, metadatas=flush_metadatas)
-                
+                        milvus_manager.insert_data(
+                            collection_name=collection_name,
+                            vectors=flush_embeddings,
+                            metadatas=flush_metadatas
+                        )
+    
                 visualization_queue.put(None)
                 break
         except queue.Empty:
             continue
 
         viz_batch = []
+
         for frame in frame_batch:
             global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources = insert_reid_embeddings(frame, milvus_manager, collection_name)
-          
-            for idx, global_track_id in enumerate(global_assigned_ids):
-                with global_track_locks[global_track_id]:
-                    if global_track_id not in global_track_table:
-                        global_track_table[global_track_id] = {
-                            "is_assigned": False,
-                            "first_detected": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "seen_in": set([global_track_sources[idx]]) if idx < len(global_track_sources) else set(),
-                        }
 
+            frame_video_time = frame.get("frame_video_time", 0.0)
+            camera_id = frame.get("video_path", "unknown_source")
+            current_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            with presence_lock:
+                active_now = set(global_assigned_ids)
+
+                for idx, gid in enumerate(global_assigned_ids):
+                    state = presence_buffer[gid]
+
+                    # Update entry time
+                    if state["entry_time"] is None:
+                        state.update({
+                            "entry_time": frame_video_time,
+                            "last_seen": frame_video_time,
+                            "last_camera": camera_id
+                        })
+                        event_type = "entry"
+                        
+                    # Log other detections 
                     else:
-                        global_track_table[global_track_id]["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        if idx < len(global_track_sources):
-                            global_track_table[global_track_id]["seen_in"].add(global_track_sources[idx])
+                        state["last_seen"] = frame_video_time
+                        state["last_camera"] = camera_id
+                        event_type = "detected"
 
-                    snapshot = dict(global_track_table[global_track_id])
+                    # Update global track table for periodic viewing
+                    with global_track_locks[gid]:
+                        if gid not in global_track_table:
+                            global_track_table[gid] = {
+                                "is_assigned": False,
+                                "first_detected": state["entry_time"],
+                                "last_update": frame_video_time,
+                                "seen_in": set([camera_id]),
+                            }
+                        else:
+                            global_track_table[gid]["last_update"] = frame_video_time
+                            global_track_table[gid]["seen_in"].add(camera_id)
 
-                event = {
-                    "global_track_id": global_track_id,
-                    "event_type": "detected",
-                    "first_detected": snapshot["first_detected"],
-                    "event_creation_timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-                    "is_assigned": snapshot["is_assigned"],
-                    "last_update": snapshot["last_update"],
-                    "seen_in": list(snapshot["seen_in"]),
-                    "description": (
-                        f"Tracking event for ID {global_track_id}: "
-                        f"assigned={snapshot['is_assigned']}, "
-                        f"last_update={snapshot['last_update']}, "
-                        f"seen in {list(snapshot['seen_in'])}"
-                    ),
-                    "deliveries_count": random.randint(0, 100)
-                }
-                tracking_logs_q.put(event)
+                        snapshot = dict(global_track_table[gid])
 
-            local_global_mapping = {local: global_id for local, global_id in zip(local_track_ids, global_assigned_ids)}
+                    # Create Milvus event logs
+                    event = {
+                        "global_track_id": gid,
+                        "event_type": event_type,
+                        "first_detected": snapshot["first_detected"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(snapshot["first_detected"], datetime) else str(snapshot["first_detected"]),
+                        "event_creation_timestamp": current_ts,
+                        "last_update": frame_video_time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(frame_video_time, datetime) else str(frame_video_time),
+                        "last_camera": camera_id,
+                        "is_assigned": snapshot["is_assigned"],
+                        "seen_in": list(snapshot["seen_in"]),
+                        "description": (
+                            f"{event_type.upper()} event for {gid}: "
+                            f"entry={snapshot['first_detected']}s, "
+                            f"last_seen={frame_video_time:.2f}s, "
+                            f"camera={camera_id}, "
+                            f"seen_in={list(snapshot['seen_in'])}"
+                        ),
+                        "deliveries_count": random.randint(0, 100)
+                    }
+                    tracking_logs_q.put(event)
+
+                # Update exit time
+                for gid, state in list(presence_buffer.items()):
+                    if state["last_seen"] is None:
+                        continue
+
+                    time_since_seen = frame_video_time - state["last_seen"]
+                    if time_since_seen > EXIT_GAP_SECS and gid not in active_now:
+                        event = {
+                            "global_track_id": gid,
+                            "event_type": "exit",
+                            "first_detected": state["entry_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(state["entry_time"], datetime) else str(state["entry_time"]),
+                            "event_creation_timestamp": current_ts,
+                            "last_update": state["last_seen"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(state["last_seen"], datetime) else str(state["last_seen"]),
+                            "last_camera": state["last_camera"],
+                            "is_assigned": global_track_table.get(gid, {}).get("is_assigned", False),
+                            "seen_in": list(global_track_table.get(gid, {}).get("seen_in", [])),
+                            "description": (
+                                f"EXIT event for {gid}: "
+                                f"entry={state['entry_time']}s, "
+                                f"exit={state['last_seen']}s, "
+                                f"camera={state['last_camera']}"
+                            ),
+                            "deliveries_count": random.randint(0, 100)
+                        }
+                        tracking_logs_q.put(event)
+                        del presence_buffer[gid]
+
+            local_global_mapping = {
+                local: gid for local, gid in zip(local_track_ids, global_assigned_ids)
+            }
             viz_batch.append((frame, local_global_mapping))
 
         visualization_queue.put(viz_batch)
 
-    # Cleanup
     with local_state_lock:
         track_rolling_avgs.clear()
     with global_mean_lock:
         global_mean.clear()
 
-    print("[ReID Processor]: Completed batches and flushed remaining mean embeddings.")
+    print("[ReID Processor]: Completed processing all frame batches and flushed remaining mean embeddings.")
 
 
