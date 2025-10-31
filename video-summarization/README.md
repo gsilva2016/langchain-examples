@@ -438,3 +438,11 @@ To enable individual summary Agent flow, which generates an hourly individual su
 ./run-demo.sh --run_individual_report_agent
 ```
 Note: Ensure that MilvusDB is properly set up and contains the necesseray data before running the agent.
+
+## Run router Agent
+
+To enable router Agent flow, which classifies user query and generates a response based on metadata stored in MilvusDB or through RAG call, run the following command:
+```
+./run-demo.sh --run_router_agent
+```
+Note: Ensure that MilvusDB is properly set up and contains the necesseray data before running the agent. Idle and Track agents generated data is used to answer user query in router agent.

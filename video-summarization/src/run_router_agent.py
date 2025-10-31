@@ -44,18 +44,12 @@ async def adk_runner(args):
     
     user_input = types.Content(
         role='user',
-        parts=[types.Part(text=args.query_text)] ##"what happned in the viode?")] ##Show me idle time last week")]
+        parts=[types.Part(text=args.query_text)] 
     )
    
     
     response_events = runner.run_async(user_id=user_id, session_id=session_id, new_message=user_input)
     
-    # async for event in response_events:
-        # print("Agent output:", event.content.parts[0].text if event.content else None)
-        # if event.is_final_response():
-            # final_answer = event.content.parts[0].text if event.content else "No final response content"
-            # print("Final agent response:", final_answer)
-            # break
     async for event in response_events:
         if event.content and event.content.parts:
             print("Agent output:", event.content.parts[0].text)
