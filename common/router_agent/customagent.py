@@ -55,7 +55,6 @@ class QueryRouterAgent(BaseAgent):
         ctx.session.state["collection_name"] = collection_name
         
         # Yield a synthetic final event with clean classification only
-        # yield Event(content=types.Content(role="system", parts=[types.Part(text=collection_name)]))
         yield Event(
             author=self.name,
             content=types.Content(
@@ -64,18 +63,6 @@ class QueryRouterAgent(BaseAgent):
             )
         )
         # Then continue routing to other agents...
-
-        # # Run classifier agent first
-        # async for event in self.classifier_agent.run_async(ctx):
-            # yield event
-
-        # # collection_name = ctx.session.state.get("collection_name", "")
-        # # Post-process classification result to extract clean label
-        # raw_output = ctx.session.state.get("collection_name", "")
-        # import re
-        # match = re.search(r"(tracking_logs|individual_report|rag)", raw_output)
-        # collection_name = match.group(1) if match else None
-        # ctx.session.state["collection_name"] = collection_name
     
         # Debug log
         logger.info(f"[{self.name}] Classifier returned collection_name='{collection_name}'")

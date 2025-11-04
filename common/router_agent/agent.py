@@ -51,21 +51,5 @@ rag_agent = LlmAgent(
     name="RagAgent",
     model=llm_serving,
     instruction=rag_agent_instruction,
-    # """
-# You are a retrieval agent.
-# Your primary task is to handle semantic search queries when the routing decision from the classifier specifies 'rag'.
-
-# Steps:
-# 1. Check if the input variable {collection_name} equals 'rag'.
-# 2. If yes, call the rag_retriever_tool with the current session state (accessible via tool_context.state),
-   # passing in relevant fields like query, filter_expression, query_img, and Milvus configuration.
-# 3. Return the retriever output directly (no extra commentary).
-
-# If {collection_name} is not 'rag', do nothing.
-# """,
     tools=[rag_retriever_tool]
 )
-# router_pipeline = SequentialAgent(
-    # name="RouterPipeline",
-    # sub_agents=[classifier_agent, metadata_agent, rag_agent]
-# )
