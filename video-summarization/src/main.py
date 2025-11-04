@@ -1,6 +1,7 @@
 import argparse
 import os
 import queue
+import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from dotenv import load_dotenv
 
@@ -130,14 +131,6 @@ if __name__ == '__main__':
                 obj_detect_threshold,
                 chunking_mechanism
             ))
- 
-        print("[Main]: Getting sampled frames")    
-        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
-                                    resolution=args.resolution)
-        
-        if run_vlm:
-            print("[Main]: Starting frame ingestion into Milvus")
-            milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager, ov_blip_embedder)
 
         reid_futures = []
         viz_futures = []
@@ -183,8 +176,18 @@ if __name__ == '__main__':
             # Process tracking logs
             print("[Main]: Starting tracking logs processing")
             process_logs_future = pool.submit(process_tracking_logs, tracking_logs_queue, milvus_manager, ov_blip_embedder)
-
+        
         if run_vlm:
+            print("[Main]: Getting sampled frames")    
+            sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
+                                    resolution=args.resolution)
+        
+            print("[Main]: Starting frame ingestion into Milvus")
+            milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager, ov_blip_embedder)
+            
+            # TODO: This is a temorary sleep and should be replaced with proper synchronization
+            time.sleep(60)
+            
             print("[Main]: Starting chunk summary generation")
             cs_future = pool.submit(
                 generate_chunk_summaries,

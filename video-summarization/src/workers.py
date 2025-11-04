@@ -259,41 +259,41 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
 
         except queue.Empty:
             continue
-        print(f"[VLM]: Generating chunk summary for chunk {chunk['chunk_id']}")
+        print(f"[VLM]: Generating chunk summary for chunk {chunk['chunk_path']}")
         
         # Prepare the frames for the VLM request
         content = []
         
         # Add frame information as text context to ground the VLM response
-        frame_ids = chunk.get("frame_ids", [])
-        frame_info_text = f"You are analyzing {len(chunk['frames'])} sampled frames from this video chunk.\n"
-        frame_info_text += f"Frame IDs being analyzed: {', '.join(map(str, frame_ids))}\n"
-        frame_info_text += "Please reference these specific frame IDs in your analysis when describing activities or events.\n\n"
-        content.append({"type": "text", "text": frame_info_text})
+        # frame_ids = chunk.get("frame_ids", [])
+        # frame_info_text = f"You are analyzing {len(chunk['frames'])} sampled frames from this video chunk.\n"
+        # frame_info_text += f"Frame IDs being analyzed: {', '.join(map(str, frame_ids))}\n"
+        # frame_info_text += "Please reference these specific frame IDs in your analysis when describing activities or events.\n\n"
+        # content.append({"type": "text", "text": frame_info_text})
         
         # Add the object detection metadata to the VLM request
-        if obj_detect_enabled:
-            detected_objects = chunk["detected_objects"]
+        # if obj_detect_enabled:
+        #     detected_objects = chunk["detected_objects"]
             
-            # Format detected objects for VLM input
-            detection_lines = []
-            for d in detected_objects:
-                frame_num = d.get("frame")
-                objs = d.get("objects", [])
-                if objs:
-                    obj_descriptions = []
-                    for obj in objs:
-                        label = obj.get("label")
-                        bbox = obj.get("bbox")
-                        bbox_str = f"[{', '.join([f'{v:.2f}' for v in bbox])}]" if bbox else "[]"
-                        obj_descriptions.append(f"{label} at {bbox_str}")
-                    detection_lines.append(f"Frame {frame_num}: " + "; ".join(obj_descriptions))
-            detection_text = (
-                "Detected objects per frame:\n" +
-                "\n".join(detection_lines) +
-                "\nPlease use this information in your analysis."
-            )
-            content.append({"type": "text", "text": detection_text})
+        #     # Format detected objects for VLM input
+        #     detection_lines = []
+        #     for d in detected_objects:
+        #         frame_num = d.get("frame")
+        #         objs = d.get("objects", [])
+        #         if objs:
+        #             obj_descriptions = []
+        #             for obj in objs:
+        #                 label = obj.get("label")
+        #                 bbox = obj.get("bbox")
+        #                 bbox_str = f"[{', '.join([f'{v:.2f}' for v in bbox])}]" if bbox else "[]"
+        #                 obj_descriptions.append(f"{label} at {bbox_str}")
+        #             detection_lines.append(f"Frame {frame_num}: " + "; ".join(obj_descriptions))
+        #     detection_text = (
+        #         "Detected objects per frame:\n" +
+        #         "\n".join(detection_lines) +
+        #         "\nPlease use this information in your analysis."
+        #     )
+        #     content.append({"type": "text", "text": detection_text})
         
         # Add tracking information to enrich VLM context
         if tracking_enabled and milvus_manager:
@@ -306,65 +306,66 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                     video_path=chunk["chunk_path"]
                 )
 
-                if tracking_info["active_global_ids"]:
-                    # Filter tracking data to only include frames that VLM will receive
-                    vlm_frame_ids_set = set(frame_ids)
-                    filtered_active_ids = set()
-                    filtered_track_detections = {}
-                    vlm_relevant_detections = 0                    
-                    for track_id, detections in tracking_info["track_detections"].items():
-                        vlm_detections = [d for d in detections if d["frame_id"] in vlm_frame_ids_set]
-                        if vlm_detections:
-                            filtered_active_ids.add(track_id)
-                            filtered_track_detections[track_id] = vlm_detections
-                            vlm_relevant_detections += len(vlm_detections)
+        #         if tracking_info["active_global_ids"]:
+        #             # Filter tracking data to only include frames that VLM will receive
+        #             vlm_frame_ids_set = set(frame_ids)
+        #             filtered_active_ids = set()
+        #             filtered_track_detections = {}
+        #             vlm_relevant_detections = 0                    
+        #             for track_id, detections in tracking_info["track_detections"].items():
+        #                 vlm_detections = [d for d in detections if d["frame_id"] in vlm_frame_ids_set]
+        #                 if vlm_detections:
+        #                     filtered_active_ids.add(track_id)
+        #                     filtered_track_detections[track_id] = vlm_detections
+        #                     vlm_relevant_detections += len(vlm_detections)
                     
-                    print(f"[VLM]: Filtered tracking data - {vlm_relevant_detections} detections from {len(filtered_active_ids)} persons in VLM frames")
+        #             print(f"[VLM]: Filtered tracking data - {vlm_relevant_detections} detections from {len(filtered_active_ids)} persons in VLM frames")
                     
-                    if filtered_active_ids:
-                        tracking_lines = [
-                            f"Tracking context for VLM frames {frame_ids}:",
-                            f"Detected persons in these frames: {len(filtered_active_ids)} unique individuals with {vlm_relevant_detections} total detections"
-                        ]
+        #             if filtered_active_ids:
+        #                 tracking_lines = [
+        #                     f"Tracking context for VLM frames {frame_ids}:",
+        #                     f"Detected persons in these frames: {len(filtered_active_ids)} unique individuals with {vlm_relevant_detections} total detections"
+        #                 ]
                         
-                        # Add specific track details with chronological frame information
-                        for track_id in list(filtered_active_ids):
-                            detections = filtered_track_detections.get(track_id, [])
+        #                 # Add specific track details with chronological frame information
+        #                 for track_id in list(filtered_active_ids):
+        #                     detections = filtered_track_detections.get(track_id, [])
 
-                            if detections:
-                                # Create chronological description for this person
-                                detection_descriptions = []
-                                for detection in detections:
-                                    frame_id = detection["frame_id"]
-                                    bbox = detection["bbox"]
+        #                     if detections:
+        #                         # Create chronological description for this person
+        #                         detection_descriptions = []
+        #                         for detection in detections:
+        #                             frame_id = detection["frame_id"]
+        #                             bbox = detection["bbox"]
 
-                                    if bbox:
-                                        # Scale bounding box from tracker resolution to VLM resolution
-                                        scaled_bbox = scale_bbox_coordinates(bbox, TRACKER_WIDTH, TRACKER_HEIGHT, VLM_RESOLUTION_X, VLM_RESOLUTION_Y)
-                                        bbox_str = f"[{', '.join([f'{v:.1f}' for v in scaled_bbox])}]"
-                                        detection_descriptions.append(f"detected at frame {frame_id} at location {bbox_str}")
+        #                             if bbox:
+        #                                 # Scale bounding box from tracker resolution to VLM resolution
+        #                                 scaled_bbox = scale_bbox_coordinates(bbox, TRACKER_WIDTH, TRACKER_HEIGHT, VLM_RESOLUTION_X, VLM_RESOLUTION_Y)
+        #                                 bbox_str = f"[{', '.join([f'{v:.1f}' for v in scaled_bbox])}]"
+        #                                 detection_descriptions.append(f"detected at frame {frame_id} at location {bbox_str}")
                                 
-                                if detection_descriptions:
-                                    chronological_desc = "; ".join(detection_descriptions)
+        #                         if detection_descriptions:
+        #                             chronological_desc = "; ".join(detection_descriptions)
                                     
-                                    # Add movement analysis if enabled
-                                    if ENABLE_MOVEMENT_ANALYSIS:
-                                        movement_analysis = analyze_movement_patterns(detections)
-                                        if movement_analysis["movement_summary"] != "insufficient data":
-                                            movement_desc = movement_analysis["movement_summary"]
-                                            chronological_desc += f" | Movement: {movement_desc}"
+        #                             # Add movement analysis if enabled
+        #                             if ENABLE_MOVEMENT_ANALYSIS:
+        #                                 movement_analysis = analyze_movement_patterns(detections)
+        #                                 if movement_analysis["movement_summary"] != "insufficient data":
+        #                                     movement_desc = movement_analysis["movement_summary"]
+        #                                     chronological_desc += f" | Movement: {movement_desc}"
                                     
-                                    tracking_lines.append(f"Person {track_id}: {chronological_desc}")
+        #                             tracking_lines.append(f"Person {track_id}: {chronological_desc}")
                     
-                    tracking_text = ("\n".join(tracking_lines) +
-                        "\nConsider this tracking context in your summary. If specifying a person, please denote them by their global id.")
+        #             tracking_text = ("\n".join(tracking_lines) +
+        #                 "\nConsider this tracking context in your summary. If specifying a person, please denote them by their global id.")
 
-                    print("[VLM]:", frame_info_text)
-                    print("[VLM]:", tracking_text)
-                    print("[VLM]:", prompt)                    
-                    content.append({"type": "text", "text": tracking_text})
+        #             print("[VLM]:", frame_info_text)
+        #             print("[VLM]:", tracking_text)
+        #             print("[VLM]:", prompt)                    
+        #             content.append({"type": "text", "text": tracking_text})
             except Exception as e:
                 print(f"[VLM]: Failed to get tracking info: {e}")
+        
         
         # Convert frames to base64-encoded images for VLM input
         for i, frame in enumerate(chunk["frames"]):
@@ -380,7 +381,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                     print(f"[VLM]: Failed to add tracking overlay: {e}")
             
             img = Image.fromarray(frame_copy)
-            buffer = io.BytesIO()
+            buffer = io.BytesIO()            
             img.save(buffer, format="PNG")
             frame_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
             content.append({
@@ -849,7 +850,7 @@ def add_tracking_overlay_to_frame(frame, frame_id, tracking_info):
                     cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     
                     # Add global ID label and ensure it fits within the frame
-                    label = f"ID: {global_id}"
+                    label = f"GID: {global_id[:6]}"
                     label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
                     
                     # Get frame dimensions
@@ -870,8 +871,8 @@ def add_tracking_overlay_to_frame(frame, frame_id, tracking_info):
                     bg_y2 = min(frame_height, label_y)
                     
                     # Draw bounding box background and text
-                    cv2.rectangle(frame_bgr, (bg_x1, bg_y1), (bg_x2, bg_y2), (0, 255, 0), -1)
-                    cv2.putText(frame_bgr, label, (label_x, label_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+                    # cv2.rectangle(frame_bgr, (bg_x1, bg_y1), (bg_x2, bg_y2), (0, 255, 0), -1)
+                    cv2.putText(frame_bgr, label, (label_x, label_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2, cv2.LINE_AA)
     
     # Convert back to RGB for PIL
     if len(frame_bgr.shape) == 3 and frame_bgr.shape[2] == 3:
@@ -879,55 +880,11 @@ def add_tracking_overlay_to_frame(frame, frame_id, tracking_info):
     else:
         frame_rgb = frame_bgr
     
-    # Save frame for quick visualization (TEMp)
-    os.makedirs("temp_viz", exist_ok=True)
+    # Save frame for quick visualization (TEMP)
+    os.makedirs(f"temp_viz", exist_ok=True)
     Image.fromarray(frame_rgb.astype(np.uint8)).save(f"temp_viz/frame_{frame_id}_with_tracking.png")
-    
-    return frame_rgb
 
-# def add_tracking_overlay_to_frame(frame, frame_id, tracking_info):
-#     """
-#     Add tracking ID overlays to frame for better VLM understanding.
-#     """
-#     import cv2
-    
-#     # Convert from RGB to BGR for OpenCV
-#     if len(frame.shape) == 3 and frame.shape[2] == 3:
-#         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-#     else:
-#         frame_bgr = frame.copy()
-    
-#     # Draw tracking information for current frame
-#     for global_id, detections in tracking_info.get("track_detections", {}).items():
-#         for detection in detections:
-#             if detection.get("frame_id") == frame_id:
-#                 bbox = detection.get("bbox", [])
-#                 if bbox and len(bbox) == 4:
-#                     print(f"[VLM Overlay]: Drawing bbox for global ID {global_id} on frame {frame_id}")
-#                     # Scale bbox from tracker resolution to VLM resolution
-#                     scaled_bbox = scale_bbox_coordinates(bbox, TRACKER_WIDTH, TRACKER_HEIGHT, VLM_RESOLUTION_X, VLM_RESOLUTION_Y)
-#                     x1, y1, x2, y2 = map(int, scaled_bbox)
-                    
-#                     # Draw bounding box
-#                     cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    
-#                     # Add global ID label
-#                     label = f"ID: {global_id}"
-#                     label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
-#                     cv2.rectangle(frame_bgr, (x1, y1 - label_size[1] - 10), (x1 + label_size[0], y1), (0, 255, 0), -1)
-#                     cv2.putText(frame_bgr, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-    
-#     # Convert back to RGB for PIL
-#     if len(frame_bgr.shape) == 3 and frame_bgr.shape[2] == 3:
-#         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-#     else:
-#         frame_rgb = frame_bgr
-    
-#     # Save frame for quick visualization
-#     os.makedirs("temp_viz", exist_ok=True)
-#     Image.fromarray(frame_rgb.astype(np.uint8)).save(f"temp_viz/frame_{frame_id}_with_tracking.png")
-    
-#     return frame_rgb
+    return frame_rgb
 
 def analyze_movement_patterns(detections):
     """
