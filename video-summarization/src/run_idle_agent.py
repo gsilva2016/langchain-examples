@@ -16,7 +16,7 @@ async def adk_runner(args, last_processed_dt, interval_seconds):
     print("last processed time:", last_processed_dt)
     fifteen_minutes_later = last_processed_dt + timedelta(seconds=interval_seconds)
     print("fifteen_minutes_later:", fifteen_minutes_later)
-    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt.isoformat()}" AND metadata["event_creation_timestamp"] < "{fifteen_minutes_later.isoformat()}"'
+    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt}" AND metadata["event_creation_timestamp"] < "{fifteen_minutes_later}"'
     
     collection_data = milvus_manager.query(
         collection_name=args.collection_name,
@@ -27,7 +27,7 @@ async def adk_runner(args, last_processed_dt, interval_seconds):
     if not collection_data:
         print("No data found in the collection. Skipping agent invocation.")
         last_processed_dt = (last_processed_dt + timedelta(minutes=14, seconds=59))
-        return [], last_processed_dt  
+        return [], last_processed_dt        
     session_service = InMemorySessionService()
     user_id = "user1"
     session_id = "session1"

@@ -40,10 +40,11 @@ def generate_end_of_day_report(tool_context: ToolContext) -> dict:
             overall_price_summaries.append(price_alert_summary)
         if summary:
             overall_idle_summaries.append(summary)
+        
         # Parse event_creation_timestamp to hour bucket
         if event_creation_ts:
             try:
-                event_time = datetime.strptime(event_creation_ts, '%Y-%m-%dT%H:%M:%S')
+                event_time = datetime.strptime(event_creation_ts, '%Y-%m-%d %H:%M:%S')
                 event_hour = event_time.replace(minute=0, second=0, microsecond=0)
                 hourly_agents_count[event_hour] = max(hourly_agents_count[event_hour], available_agents)
                 hourly_deliveries_count[event_hour] = max(hourly_deliveries_count[event_hour], deliveries_count)

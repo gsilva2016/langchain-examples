@@ -66,7 +66,7 @@ def update_filter_with_time(query_text, current_filter):
         start_time = dt
         end_time = dt
 
-    time_filter = f'(metadata["timestamp"] >= "{start_time.isoformat()}") and (metadata["timestamp"] <= "{end_time.isoformat()}")'
+    time_filter = f'(metadata["db_entry_timestamp"] >= "{start_time}") and (metadata["db_entry_timestamp"] <= "{end_time}")'
 
     if current_filter:
         return f'({current_filter}) and ({time_filter})'

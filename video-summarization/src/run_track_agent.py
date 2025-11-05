@@ -17,7 +17,7 @@ async def adk_runner(args, last_processed_dt):
 
     # Calculate one hour later timestamp
     one_hour_later = last_processed_dt + timedelta(hours=1)    
-    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt.isoformat()}" AND metadata["event_creation_timestamp"] < "{one_hour_later.isoformat()}"'
+    filter_expr = f'metadata["event_creation_timestamp"] > "{last_processed_dt}" AND metadata["event_creation_timestamp"] < "{one_hour_later}"'
    
     collection_data = milvus_manager.query(
         collection_name=args.collection_name,

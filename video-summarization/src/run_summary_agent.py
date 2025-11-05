@@ -19,7 +19,7 @@ async def adk_runner(args):
     tomorrow = datetime.now().date() + timedelta(days=1)
     tomorrow_midnight = datetime.combine(tomorrow, datetime.min.time()) 
  
-    filter_expr = f'metadata["event_creation_timestamp"] > "{today_midnight.isoformat()}" AND metadata["event_creation_timestamp"] < "{tomorrow_midnight.isoformat()}"'
+    filter_expr = f'metadata["event_creation_timestamp"] > "{today_midnight}" AND metadata["event_creation_timestamp"] < "{tomorrow_midnight}"'
     collection_data = milvus_manager.query(
         collection_name=args.collection_name,
         filter=filter_expr,
