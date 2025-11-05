@@ -20,7 +20,7 @@ def individual_report_generator(tool_context: ToolContext) -> dict:
             continue
 
         # Convert timestamp to start-of-the-hour (e.g., 10:34 → 10:00))
-        event_dt = datetime.strptime(event_ts, "%Y-%m-%dT%H:%M:%S")
+        event_dt = datetime.strptime(event_ts, "%Y-%m-%d %H:%M:%S")
 
         hour_start = event_dt.replace(minute=0, second=0, microsecond=0)
         hour_end = hour_start + timedelta(hours=1)

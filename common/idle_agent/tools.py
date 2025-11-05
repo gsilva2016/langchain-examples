@@ -1,7 +1,6 @@
 from datetime import datetime
 from google.adk.tools.tool_context import ToolContext
 from collections import defaultdict
-from datetime import datetime
 
 def format_seconds(seconds_float):
     total_seconds = int(seconds_float)
@@ -16,26 +15,26 @@ def format_seconds(seconds_float):
         parts.append(f"{seconds} second{'s' if seconds != 1 else ''}")
     return " and ".join(parts)
     
-def update_idle_status(
-    collection_name: str,
-    collection_data: list,
-    milvus_manager,
-    idle_threshold_seconds: int = 900,
-) -> dict:
+def update_idle_status(tool_context: ToolContext) -> dict:
     """
     Updates idle status and summary for each global_track_id based on the latest last_update event.
 
     Args:
-        collection_name: The target collection name.
-        collection_data: List of data entries with metadata containing 'global_track_id', 'first_detected', 'last_update', etc.
-        milvus_manager: Milvus manager instance used for data upsert.
-        idle_threshold_seconds: Threshold in seconds to consider an entity idle (default 900).
+        tool_context: ADK-injected context object providing session state. Must include:
+            - 'collection_name': the target collection name
+            - 'collection_data': list of data entries with metadata containing 'global_track_id', 'first_detected', 'last_update', etc.
+            - 'milvus_manager': Milvus manager instance used for data upsert
+            - 'idle_threshold_seconds': threshold in seconds to consider an entity idle (default 900)
 
     Returns:
         dict: Status dictionary with keys:
             - 'status': 'success' or 'error'
             - 'message': additional info or error description
-    """    
+    """
+    collection_name = tool_context.state.get('collection_name', [])
+    collection_data = tool_context.state.get('collection_data', [])
+    milvus_manager = tool_context.state.get('milvus_manager', [])
+    idle_threshold_seconds = tool_context.state.get('idle_threshold_seconds', 900)    
 
     # Step 1: For each global_track_id, retain only the entry with the maximum (most recent) last_update
     grouped_latest = {}
