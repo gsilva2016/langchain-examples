@@ -48,6 +48,39 @@ class FrameSampler:
         idxs = [int(i * gap + gap / 2) for i in range(num_frames)]
         return [frame_list[i] for i in idxs]
 
+    def clip_diverse_sample(
+            self, video_path: str, frame_list: List[int], num_frames: int
+    ) -> List[int]:
+        """
+        Sample frames based on CLIP embedding diversity:
+        selects frames farthest from the global centroid.
+        """
+        vr = VideoReader(video_path, ctx=cpu(0))
+        sampled = []
+        embeddings = []
+
+        with torch.no_grad():
+            for idx in frame_list:
+                frame = vr[idx].asnumpy()
+                image = self.clip_preprocess(Image.fromarray(frame)).unsqueeze(0).to(self.device)
+                emb = self.clip_model.encode_image(image).float()
+                embeddings.append(emb.cpu().numpy()[0])
+
+        embeddings = np.vstack(embeddings)
+        # Compute centroid of all frame embeddings
+        centroid = np.mean(embeddings, axis=0, keepdims=True)
+
+        # Compute cosine distance from centroid
+        similarities = embeddings @ centroid.T / (
+                np.linalg.norm(embeddings, axis=1, keepdims=True)
+                * np.linalg.norm(centroid)
+        )
+        distances = 1 - similarities.squeeze()  # cosine distance
+
+        # Select top-K most "unique" frames
+        topk_idx = np.argsort(distances)[-num_frames:]
+        return [frame_list[i] for i in sorted(topk_idx)]
+
     @staticmethod
     def remap_detected_objects_frames(
         detected_objects: List[Dict[str, Any]],
