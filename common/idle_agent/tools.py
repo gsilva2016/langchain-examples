@@ -71,7 +71,7 @@ def update_idle_status(tool_context: ToolContext) -> dict:
 
         last_update = float(last_update_str)
         first_detected =float(first_detected_str)
-        idle = (last_update - first_detected) >= idle_threshold_seconds and not is_assigned
+        idle = (last_update - first_detected) >= idle_threshold_seconds and is_assigned
 
         metadata['idle_status'] = idle
         seen_in_videos = ', '.join(metadata.get('seen_in', []))

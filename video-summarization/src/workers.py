@@ -889,7 +889,7 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                     with global_track_locks[gid]:
                         if gid not in global_track_table:
                             global_track_table[gid] = {
-                                "is_assigned": False,
+                                "is_assigned": random.choice([True, False]),
                                 "first_detected": state["entry_time"],
                                 "last_update": frame_video_time,
                                 "seen_in": set([camera_id]),
