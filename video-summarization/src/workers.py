@@ -42,6 +42,8 @@ AMBIGUITY_MARGIN = float(os.environ.get("AMBIGUITY_MARGIN", 0.15))
 PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 1))
 TRACKING_LOGS_GENERATION_TIME_SECS = float(os.environ.get("TRACKING_LOGS_GENERATION_TIME_SECS", 1.0))
 MAX_EVENTS_BATCH = int(os.environ.get("MAX_EVENTS_BATCH", 10))
+EXIT_GAP_SECS = float(os.environ.get("EXIT_GAP_SECS", 3.0))
+
 
 # Resolution configurations
 VLM_RESOLUTION_X = int(os.environ.get("RESOLUTION_X", 480))
@@ -52,6 +54,8 @@ TRACKER_HEIGHT = int(os.environ.get("TRACKER_HEIGHT", 450))
 # Movement analysis configuration
 ENABLE_MOVEMENT_ANALYSIS = os.environ.get("ENABLE_MOVEMENT_ANALYSIS", "FALSE").upper() == "TRUE"
 
+
+# Global locks
 global_track_locks = defaultdict(threading.Lock)
 global_assignment_lock = threading.Lock()
 
@@ -62,10 +66,13 @@ global_mean = {}
 # Locks for concurrency
 local_state_lock = threading.Lock()
 global_mean_lock = threading.Lock()
+presence_lock = threading.Lock()
 
-# Global variable to store VLM sampled frame IDs
-vlm_sampled_frame_ids = None
-vlm_frame_ids_set = False
+presence_buffer = defaultdict(lambda: {
+    "entry_time": None,
+    "last_seen": None,
+    "last_camera": None
+})
 
 def send_summary_request(summary_q: queue.Queue, n: int = 3):
     summary_merger = SummaryMergeScoreTool(api_base=OVMS_ENDPOINT)
@@ -141,7 +148,7 @@ def ingest_summaries_into_milvus(milvus_summaries_q: queue.Queue, milvus_manager
                         "detected_objects": item.get("detected_objects", []),
                         "mode": "text",
                         "summary": item["chunk_summary"],
-                        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                        "db_entry_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     } for item in summaries
                 ]
 
@@ -188,9 +195,9 @@ def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: MilvusManage
                     "chunk_id": chunk["chunk_id"],
                     "frame_id": idx,
                     "start_time": chunk["start_time"],
-                    "end_time": chunk["start_time"],
+                    "end_time": chunk["end_time"],
                     "chunk_path": chunk["chunk_path"],
-                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "db_entry_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "mode": "image",
                     "detected_objects": str(objects)
                 })
@@ -205,8 +212,9 @@ def ingest_frames_into_milvus(frame_q: queue.Queue, milvus_manager: MilvusManage
             print(f"[Milvus]: Frame Ingestion Request failed: {e}")
 
 def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queue, vlm_queue: queue.Queue,
-                       max_num_frames: int = 32, resolution: list = [], save_frame: bool = False):
-    
+                       video_path_to_tracking_queue: dict = None, max_num_frames: int = 32, 
+                       resolution: list = [], save_frame: bool = False):
+ 
     sampler = FrameSampler(max_num_frames=max_num_frames, resolution=resolution, save_frame=save_frame)
 
     while True:
@@ -223,13 +231,9 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
         video_path = chunk["chunk_path"]
         try:
             frames_dict = sampler.sample_frames_from_video(video_path, chunk["detected_objects"])
-            # Set global variable to VLM sampled frame IDs on first call only
-            global vlm_sampled_frame_ids, vlm_frame_ids_set
-            if not vlm_frame_ids_set:
-                vlm_sampled_frame_ids = frames_dict["frame_ids"]
-                vlm_frame_ids_set = True
         except Exception as e:
             print(f"[SAMPLER]: sampling failed: {e}")
+            continue
         
         sampled = {
             "video_path": chunk["video_path"],
@@ -242,6 +246,14 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
         }
         vlm_queue.put({**sampled, "detected_objects": frames_dict["detected_objects"]})
         milvus_frames_queue.put({**sampled, "detected_objects": chunk["detected_objects"]})
+        
+        # Pass VLM frame IDs to tracking queue so DeepSORT knows which frames to mark for Milvus ingestion
+        if video_path_to_tracking_queue is not None:
+            source_video_path = chunk.get("video_path")
+            if source_video_path and source_video_path in video_path_to_tracking_queue:
+                chunk_with_vlm_frames = {**chunk, "vlm_frame_ids": frames_dict["frame_ids"]}
+                video_path_to_tracking_queue[source_video_path].put(chunk_with_vlm_frames)
+                print(f"[SAMPLER]: Sent chunk with {len(frames_dict['frame_ids'])} VLM frame IDs to tracking queue for {source_video_path}")
 
     print("[SAMPLER]: Sampling completed")
     vlm_queue.put(None)
@@ -249,7 +261,8 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
 
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
                              prompt: str, max_new_tokens: int, obj_detect_enabled: bool, 
-                             milvus_manager: MilvusManager = None, tracking_enabled: bool = False):
+                             milvus_manager: MilvusManager = None, tracking_enabled: bool = False,
+                             chunk_tracking_events: dict = None):
     
     while True:        
         try:
@@ -263,40 +276,52 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         
         # Prepare the frames for the VLM request
         content = []
-        
+                
+        # Add the object detection metadata to the VLM request
+        if obj_detect_enabled:
+            detected_objects = chunk["detected_objects"]
+            
+            # Format detected objects for VLM input
+            detection_lines = []
+            for d in detected_objects:
+                frame_num = d.get("frame")
+                objs = d.get("objects", [])
+                if objs:
+                    obj_descriptions = []
+                    for obj in objs:
+                        label = obj.get("label")
+                        bbox = obj.get("bbox")
+                        bbox_str = f"[{', '.join([f'{v:.2f}' for v in bbox])}]" if bbox else "[]"
+                        obj_descriptions.append(f"{label} at {bbox_str}")
+                    detection_lines.append(f"Frame {frame_num}: " + "; ".join(obj_descriptions))
+            detection_text = (
+                "Detected objects per frame:\n" +
+                "\n".join(detection_lines) +
+                "\nPlease use this information in your analysis."
+            )
+            content.append({"type": "text", "text": detection_text})
+
         # Add frame information as text context to ground the VLM response
         # frame_ids = chunk.get("frame_ids", [])
         # frame_info_text = f"You are analyzing {len(chunk['frames'])} sampled frames from this video chunk.\n"
         # frame_info_text += f"Frame IDs being analyzed: {', '.join(map(str, frame_ids))}\n"
         # frame_info_text += "Please reference these specific frame IDs in your analysis when describing activities or events.\n\n"
         # content.append({"type": "text", "text": frame_info_text})
-        
-        # Add the object detection metadata to the VLM request
-        # if obj_detect_enabled:
-        #     detected_objects = chunk["detected_objects"]
-            
-        #     # Format detected objects for VLM input
-        #     detection_lines = []
-        #     for d in detected_objects:
-        #         frame_num = d.get("frame")
-        #         objs = d.get("objects", [])
-        #         if objs:
-        #             obj_descriptions = []
-        #             for obj in objs:
-        #                 label = obj.get("label")
-        #                 bbox = obj.get("bbox")
-        #                 bbox_str = f"[{', '.join([f'{v:.2f}' for v in bbox])}]" if bbox else "[]"
-        #                 obj_descriptions.append(f"{label} at {bbox_str}")
-        #             detection_lines.append(f"Frame {frame_num}: " + "; ".join(obj_descriptions))
-        #     detection_text = (
-        #         "Detected objects per frame:\n" +
-        #         "\n".join(detection_lines) +
-        #         "\nPlease use this information in your analysis."
-        #     )
-        #     content.append({"type": "text", "text": detection_text})
-        
+
         # Add tracking information to enrich VLM context
         if tracking_enabled and milvus_manager:
+            print("[VLM]: waiting for tracking data to be available")
+            
+            # Wait for tracking data to be processed for this chunk
+            if chunk_tracking_events and chunk["chunk_id"] in chunk_tracking_events:
+                tracking_event = chunk_tracking_events[chunk["chunk_id"]]
+
+                # Wait up to 30 seconds for tracking data to be processed
+                if tracking_event.wait(timeout=60*0.5):
+                    print(f"[VLM]: tracking data ready for chunk {chunk['chunk_id']}")
+                else:
+                    print(f"[VLM]: timeout waiting for tracking data for chunk {chunk['chunk_id']}")
+            
             print("[VLM]: adding tracking info")
             try:
                 # Get current tracking info
@@ -366,7 +391,6 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             except Exception as e:
                 print(f"[VLM]: Failed to get tracking info: {e}")
         
-        
         # Convert frames to base64-encoded images for VLM input
         for i, frame in enumerate(chunk["frames"]):
             frame_copy = frame.copy()
@@ -376,7 +400,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                 try:
                     current_frame_id = chunk.get("frame_ids", [])[i] if i < len(chunk.get("frame_ids", [])) else None
                     if current_frame_id is not None:
-                        frame_copy = add_tracking_overlay_to_frame(frame_copy, current_frame_id, tracking_info)
+                        frame_copy = add_tracking_overlay_to_frame(frame_copy, current_frame_id, tracking_info, chunk["start_time"], chunk["end_time"])
                 except Exception as e:
                     print(f"[VLM]: Failed to add tracking overlay: {e}")
             
@@ -441,7 +465,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
     merger_queue.put(None)
         
 def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue,
-                    tracking_chunk_queue: queue.Queue, obj_detect_enabled: bool, obj_detect_path: str, 
+                    obj_detect_enabled: bool, obj_detect_path: str, 
                     obj_detect_sample_rate: int, obj_detect_threshold: float, 
                     chunking_mechanism: str = "sliding_window"):
     # Initialize the video chunk loader
@@ -464,20 +488,23 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
     # Generate chunks
     for doc in loader.lazy_load():
         print(f"[CHUNK LOADER]: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
+        
+        # String version of start and end times
+        chunk_start_time_str = doc.metadata["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(doc.metadata["start_time"], datetime) else str(doc.metadata["start_time"])
+        chunk_end_time_str = doc.metadata["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(doc.metadata["end_time"], datetime) else str(doc.metadata["end_time"])
+
         chunk = {
             "video_path": doc.metadata["source"],
             "chunk_id": doc.metadata["chunk_id"],
             "chunk_path": doc.metadata["chunk_path"],
             "chunk_metadata": doc.page_content,
-            "start_time": doc.metadata["start_time"],
-            "end_time": doc.metadata["end_time"],
+            "start_time": chunk_start_time_str,
+            "end_time": chunk_end_time_str,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "detected_objects": doc.metadata["detected_objects"]
         }
         chunk_queue.put(chunk)
-        if tracking_chunk_queue is not None:
-            print("[CHUNK LOADER]: placing in tracking queue")
-            tracking_chunk_queue.put(chunk)
+    # Note: tracking_chunk_queue will be populated by get_sampled_frames with VLM frame IDs
     print(f"[CHUNK LOADER]: Chunk generation completed for {video_path}")
 
 def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results_queue: queue.Queue,
@@ -485,7 +512,7 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                              nn_budget: int = 100, max_cosine_distance: float = 0.5, metric_type: str = "cosine",
                              max_iou_distance: float = 0.7, max_age: int = 100, n_init: int = 1,
                              resize_dim: tuple = (700, 450), sampling_rate: int = 1, det_thresh: float = 0.5,
-                             write_video: bool = True):
+                             write_video: bool = True, chunk_tracking_events: dict = None):
     """
     Chunk level DeepSORT tracking. Processes video chunks from tracking_chunk_queue,
     runs detection and tracking, and puts results in tracking_results_queue.
@@ -512,8 +539,15 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         if chunk is None:
             break
 
-        # Grab the video chunk file
+        # Grab the video chunk file and VLM frame IDs for this specific chunk
         video_path = chunk["chunk_path"]
+        vlm_frame_ids_for_chunk = set(chunk.get("vlm_frame_ids", []))
+        chunk_id = chunk["chunk_id"]
+
+        # Create tracking event for this chunk if events dict is provided
+        if chunk_tracking_events is not None and chunk_id not in chunk_tracking_events:
+            chunk_tracking_events[chunk_id] = threading.Event()
+            print(f"[DeepSORT]: Created tracking event for chunk {chunk_id}")
 
         # Initialte sampler if not already done
         if sampler is None:
@@ -521,8 +555,6 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             vr = VideoReader(video_path, ctx=cpu(0))
             
             fps = vr.get_avg_fps() if hasattr(vr, 'get_avg_fps') else 30
-            # sample_interval = max(1, int(fps // reid_sampling_rate))
-            # print(f"--------------DeepSORT: Video FPS: {fps}, Sampling every {sample_interval} frames for ReID with rate {reid_sampling_rate}fps")
             
             if sampling_rate <= 1:
                 max_num_frames = int(len(vr))  # sample every frame
@@ -555,6 +587,11 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             # Preprocess frame for detection
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             
+            if isinstance(chunk["start_time"], datetime):
+                frame_video_time = chunk["start_time"] + timedelta(seconds=(frame_id / fps))
+            else:
+                frame_video_time = float(chunk["start_time"]) + (frame_id / fps)
+
             h, w = frame.shape[:2]
             input_image = detector.preprocess(frame)
 
@@ -618,14 +655,19 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             if identities is None or len(identities) == 0:
                 continue
             
-            # Accumulate tracking results for this frame
-            # Check if this frame should be ingested to Milvus (only VLM-sampled frames)
-            global vlm_sampled_frame_ids
-            should_ingest = vlm_sampled_frame_ids is not None and frame_id in vlm_sampled_frame_ids
+            # Check if this frame should be ingested to Milvus (checking if sampled for VLM)
+            should_ingest = frame_id in vlm_frame_ids_for_chunk
             if should_ingest:
-                print(f"[DeepSORT]: Frame ID {frame_id}, Should Ingest to Milvus: {should_ingest}")
+                print(f"[DeepSORT]: Frame ID {frame_id}, Should Ingest to Milvus: {should_ingest}")    
+
+            # String version of start and end times
+            chunk_start_time_str = chunk["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["start_time"], datetime) else str(chunk["start_time"])
+            chunk_end_time_str = chunk["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["end_time"], datetime) else str(chunk["end_time"])
+            
+            # Accumulate tracking results for this frame
             tracking_res = {
                 "frame_id": frame_id,
+                "frame_video_time": frame_video_time,
                 "chunk_id": chunk["chunk_id"],
                 "bboxes": bbox_xyxy.tolist(),
                 "object_class": ["person"] * len(bbox_xyxy),  
@@ -637,11 +679,10 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 ],
                 "video_path": chunk["video_path"],
                 "chunk_path": chunk["chunk_path"],
-                "start_time": chunk["start_time"],
-                "end_time": chunk["end_time"],
+                "start_time": chunk_start_time_str,
+                "end_time": chunk_end_time_str,
                 "should_ingest_to_milvus": should_ingest
             }
-        
             chunk_tracking_results.append(tracking_res)
         
             # print("length of chunk tracking results:", len(chunk_tracking_results)) 
@@ -704,8 +745,12 @@ def process_tracking_logs(tracking_logs_q: queue.Queue, milvus_manager: MilvusMa
             gid = event["global_track_id"]
             now = time.time()
 
+            event_type = event.get("event_type", "")
+            if event_type in ("entry", "exit"):
+                events.append(event)
+                
             # Process event only if greater than TRACKING_LOGS_GENERATION_TIME_SECS, prevents too many events
-            if now - last_event_time[gid] >= TRACKING_LOGS_GENERATION_TIME_SECS:
+            elif now - last_event_time[gid] >= TRACKING_LOGS_GENERATION_TIME_SECS:
                 last_event_time[gid] = now
                 events.append(event)
 
@@ -822,7 +867,7 @@ def scale_bbox_coordinates(bbox, source_width, source_height, target_width, targ
     
     return scaled_bbox
 
-def add_tracking_overlay_to_frame(frame, frame_id, tracking_info):
+def add_tracking_overlay_to_frame(frame, frame_id, tracking_info, chunk_start_time, chunk_end_time):
     """
     Add tracking ID overlays to frame for better VLM understanding.
     """
@@ -882,105 +927,9 @@ def add_tracking_overlay_to_frame(frame, frame_id, tracking_info):
     
     # Save frame for quick visualization (TEMP)
     os.makedirs(f"temp_viz", exist_ok=True)
-    Image.fromarray(frame_rgb.astype(np.uint8)).save(f"temp_viz/frame_{frame_id}_with_tracking.png")
+    Image.fromarray(frame_rgb.astype(np.uint8)).save(f"temp_viz/frame_{frame_id}_{chunk_start_time}_{chunk_end_time}_with_tracking.png")
 
     return frame_rgb
-
-def analyze_movement_patterns(detections):
-    """
-    Analyze movement patterns from a list of detections for a single person.    
-    """
-    if len(detections) < 2:
-        return {"movement_summary": "insufficient data"}
-    
-    # Sort by frame_id to ensure chronological order
-    sorted_detections = sorted(detections, key=lambda x: x["frame_id"] or 0)
-    
-    # Calculate center points and movements
-    movements = []
-    total_distance = 0
-    center_points = []
-    
-    for detection in sorted_detections:
-        bbox = detection["bbox"]
-        if bbox and len(bbox) == 4:
-            # Calculate center point of bounding box
-            center_x = (bbox[0] + bbox[2]) / 2
-            center_y = (bbox[1] + bbox[3]) / 2
-            center_points.append((center_x, center_y, detection["frame_id"]))
-    
-    if len(center_points) < 2:
-        return {"movement_summary": "insufficient spatial data"}
-    
-    # Analyze movement between consecutive detections
-    for i in range(1, len(center_points)):
-        prev_x, prev_y, prev_frame = center_points[i-1]
-        curr_x, curr_y, curr_frame = center_points[i]
-        
-        # Calculate distance and direction
-        dx = curr_x - prev_x
-        dy = curr_y - prev_y
-        distance = (dx**2 + dy**2)**0.5
-        total_distance += distance
-        
-        # Calculate frame difference for speed
-        frame_diff = curr_frame - prev_frame
-        speed = distance / max(frame_diff, 1)  # pixels per frame
-        
-        movements.append({
-            "dx": dx, "dy": dy, 
-            "distance": distance, 
-            "speed": speed,
-            "frame_span": frame_diff
-        })
-    
-    # Analyze overall patterns
-    avg_speed = sum(m["speed"] for m in movements) / len(movements)
-    
-    # Determine dominant direction
-    total_dx = sum(m["dx"] for m in movements)
-    total_dy = sum(m["dy"] for m in movements)
-    
-    # Classify movement direction MAY NEED TO TWEAK THRESHOLD
-    direction = "stationary"
-    if abs(total_dx) > 10 or abs(total_dy) > 10:  # threshold for significant movement
-        if abs(total_dx) > abs(total_dy):
-            direction = "right" if total_dx > 0 else "left"
-        else:
-            direction = "down" if total_dy > 0 else "up"
-    
-    # Classify speed TO DO Not sure how to determine thresholds generically
-    speed_category = "slow"
-    if avg_speed > 5:
-        speed_category = "fast"
-    elif avg_speed > 2:
-        speed_category = "moderate"
-    
-    # Detect loitering 
-    frame_span = sorted_detections[-1]["frame_id"] - sorted_detections[0]["frame_id"]
-    is_loitering = total_distance < 50 and frame_span > 10  
-    
-    # Generate movement summary
-    summary_parts = []
-    if direction != "stationary":
-        summary_parts.append(f"moving {direction}")
-    if speed_category != "slow":
-        summary_parts.append(f"{speed_category} movement")
-    if is_loitering:
-        summary_parts.append("loitering detected")
-    
-    movement_summary = ", ".join(summary_parts) if summary_parts else "minimal movement"
-    
-    return {
-        "movement_summary": movement_summary,
-        "direction": direction,
-        "speed_category": speed_category,
-        "avg_speed": round(avg_speed, 2),
-        "total_distance": round(total_distance, 2),
-        "is_loitering": is_loitering,
-        "frame_span": frame_span,
-        "detection_count": len(detections)
-    }
 
 def visualize_tracking_data(visualization_queue: queue.Queue, tracker_dim: tuple = (700, 450)):
     writers = {}
@@ -1135,7 +1084,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
                     "start_time": frame["start_time"],
                     "end_time": frame["end_time"],
                     "mode": "reid",
-                    "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "db_entry_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "bbox": frame["bboxes"][i] if i < len(frame["bboxes"]) else [],
                     "object_class": frame["object_class"][i] if i < len(frame["object_class"]) else None,
                     "frame_id": frame_id
@@ -1158,7 +1107,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
 
     return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
 
-def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):
+def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data", chunk_tracking_events: dict = None):
     """
     Processes tracking results and inserts ReID embeddings into Milvus with global ID assignment.
     Also updates global track table and sends data for visualization.
@@ -1174,65 +1123,136 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         flush_metadatas.append({
                             "global_track_id": gid,
                             "mode": "reid",
-                            "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                            "db_entry_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             "event": "final_flush"
                         })
                     if flush_embeddings:
-                        milvus_manager.insert_data(collection_name=collection_name, vectors=flush_embeddings, metadatas=flush_metadatas)
-                
+                        milvus_manager.insert_data(
+                            collection_name=collection_name,
+                            vectors=flush_embeddings,
+                            metadatas=flush_metadatas
+                        )
+    
                 visualization_queue.put(None)
                 break
         except queue.Empty:
             continue
 
         viz_batch = []
+        processed_chunks = set()  
+
         for frame in frame_batch:
+            # Track which chunks we've processed
+            chunk_id = frame.get("chunk_id")
+            processed_chunks.add(chunk_id)
+            
             global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources = insert_reid_embeddings(frame, milvus_manager, collection_name)
-          
-            for idx, global_track_id in enumerate(global_assigned_ids):
-                with global_track_locks[global_track_id]:
-                    if global_track_id not in global_track_table:
-                        global_track_table[global_track_id] = {
-                            "is_assigned": False,
-                            "first_detected": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "seen_in": set([global_track_sources[idx]]) if idx < len(global_track_sources) else set(),
-                        }
 
+            frame_video_time = frame.get("frame_video_time", 0.0)
+            camera_id = frame.get("video_path", "unknown_source")
+            current_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            with presence_lock:
+                active_now = set(global_assigned_ids)
+
+                for idx, gid in enumerate(global_assigned_ids):
+                    state = presence_buffer[gid]
+
+                    # Update entry time
+                    if state["entry_time"] is None:
+                        state.update({
+                            "entry_time": frame_video_time,
+                            "last_seen": frame_video_time,
+                            "last_camera": camera_id
+                        })
+                        event_type = "entry"
+                        
+                    # Log other detections 
                     else:
-                        global_track_table[global_track_id]["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        if idx < len(global_track_sources):
-                            global_track_table[global_track_id]["seen_in"].add(global_track_sources[idx])
+                        state["last_seen"] = frame_video_time
+                        state["last_camera"] = camera_id
+                        event_type = "detected"
 
-                    snapshot = dict(global_track_table[global_track_id])
+                    # Update global track table for periodic viewing
+                    with global_track_locks[gid]:
+                        if gid not in global_track_table:
+                            global_track_table[gid] = {
+                                "is_assigned": False,
+                                "first_detected": state["entry_time"],
+                                "last_update": frame_video_time,
+                                "seen_in": set([camera_id]),
+                            }
+                        else:
+                            global_track_table[gid]["last_update"] = frame_video_time
+                            global_track_table[gid]["seen_in"].add(camera_id)
 
-                event = {
-                    "global_track_id": global_track_id,
-                    "event_type": "detected",
-                    "first_detected": snapshot["first_detected"],
-                    "event_creation_timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-                    "is_assigned": snapshot["is_assigned"],
-                    "last_update": snapshot["last_update"],
-                    "seen_in": list(snapshot["seen_in"]),
-                    "description": (
-                        f"Tracking event for ID {global_track_id}: "
-                        f"assigned={snapshot['is_assigned']}, "
-                        f"last_update={snapshot['last_update']}, "
-                        f"seen in {list(snapshot['seen_in'])}"
-                    ),
-                    "deliveries_count": random.randint(0, 100)
-                }
-                tracking_logs_q.put(event)
+                        snapshot = dict(global_track_table[gid])
 
-            local_global_mapping = {local: global_id for local, global_id in zip(local_track_ids, global_assigned_ids)}
+                    # Create Milvus event logs
+                    event = {
+                        "global_track_id": gid,
+                        "event_type": event_type,
+                        "first_detected": snapshot["first_detected"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(snapshot["first_detected"], datetime) else str(snapshot["first_detected"]),
+                        "event_creation_timestamp": current_ts,
+                        "last_update": frame_video_time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(frame_video_time, datetime) else str(frame_video_time),
+                        "last_camera": camera_id,
+                        "is_assigned": snapshot["is_assigned"],
+                        "seen_in": list(snapshot["seen_in"]),
+                        "description": (
+                            f"{event_type.upper()} event for {gid}: "
+                            f"entry={snapshot['first_detected']}s, "
+                            f"last_seen={frame_video_time:.2f}s, "
+                            f"camera={camera_id}, "
+                            f"seen_in={list(snapshot['seen_in'])}"
+                        ),
+                        "deliveries_count": random.randint(0, 100)
+                    }
+                    tracking_logs_q.put(event)
+
+                # Update exit time
+                for gid, state in list(presence_buffer.items()):
+                    if state["last_seen"] is None:
+                        continue
+
+                    time_since_seen = frame_video_time - state["last_seen"]
+                    if time_since_seen > EXIT_GAP_SECS and gid not in active_now:
+                        event = {
+                            "global_track_id": gid,
+                            "event_type": "exit",
+                            "first_detected": state["entry_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(state["entry_time"], datetime) else str(state["entry_time"]),
+                            "event_creation_timestamp": current_ts,
+                            "last_update": state["last_seen"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(state["last_seen"], datetime) else str(state["last_seen"]),
+                            "last_camera": state["last_camera"],
+                            "is_assigned": global_track_table.get(gid, {}).get("is_assigned", False),
+                            "seen_in": list(global_track_table.get(gid, {}).get("seen_in", [])),
+                            "description": (
+                                f"EXIT event for {gid}: "
+                                f"entry={state['entry_time']}s, "
+                                f"exit={state['last_seen']}s, "
+                                f"camera={state['last_camera']}"
+                            ),
+                            "deliveries_count": random.randint(0, 100)
+                        }
+                        tracking_logs_q.put(event)
+                        del presence_buffer[gid]
+
+            local_global_mapping = {
+                local: gid for local, gid in zip(local_track_ids, global_assigned_ids)
+            }
             viz_batch.append((frame, local_global_mapping))
 
         visualization_queue.put(viz_batch)
+        
+        # Signal that tracking data is ready for these chunks
+        if chunk_tracking_events:
+            for chunk_id in processed_chunks:
+                if chunk_id in chunk_tracking_events:
+                    chunk_tracking_events[chunk_id].set()
+                    print(f"[ReID Processor]: Signaled tracking data ready for chunk {chunk_id}")
 
-    # Cleanup
     with local_state_lock:
         track_rolling_avgs.clear()
     with global_mean_lock:
         global_mean.clear()
 
-    print("[ReID Processor]: Completed batches and flushed remaining mean embeddings.")
+    print("[ReID Processor]: Completed processing all frame batches and flushed remaining mean embeddings.")

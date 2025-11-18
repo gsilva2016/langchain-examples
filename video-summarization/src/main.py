@@ -102,6 +102,9 @@ if __name__ == '__main__':
     # Global track ID table
     global_track_ids = {}
     
+    # Add a holder to store chunk tracking events for synchronization between tracking and VLM threads
+    chunk_tracking_events = {}
+    
     # Video files or RTSP streams
     videos = {
         "video_1": args.video_file,
@@ -114,6 +117,9 @@ if __name__ == '__main__':
         tracking_chunk_queues[video_id] = queue.Queue()
         visualization_queues[video_id] = queue.Queue()
     
+    # Create mapping from video_path to tracking_chunk_queue for routing
+    video_path_to_tracking_queue = {video: tracking_chunk_queues[video_id] for video_id, video in videos.items()}
+    
     futures = []
     with ThreadPoolExecutor() as pool:
         print("[Main]: Starting RTSP camera streamer")
@@ -124,7 +130,6 @@ if __name__ == '__main__':
                 args.chunk_duration,
                 args.chunk_overlap,
                 chunk_queue,
-                tracking_chunk_queues[video_id],
                 obj_detect_enabled,
                 obj_detect_model_path,
                 obj_detect_sample_rate,
@@ -158,14 +163,15 @@ if __name__ == '__main__':
                     tracker_n_init,
                     tracker_dim,
                     det_thresh=tracker_det_thresh,
-                    write_video=False
+                    write_video=False,
+                    chunk_tracking_events=chunk_tracking_events
                 ))
             
             # Process re-id embeddings
             print("[Main]: Starting re-id embedding processing")
 
             for video_id, video in videos.items():
-                reid_futures.append(pool.submit(process_reid_embeddings, tracking_results_queues[video_id], tracking_logs_queue, visualization_queues[video_id], global_track_ids, milvus_manager))
+                reid_futures.append(pool.submit(process_reid_embeddings, tracking_results_queues[video_id], tracking_logs_queue, visualization_queues[video_id], global_track_ids, milvus_manager, "reid_data", chunk_tracking_events))
                 if save_reid_videos:
                     viz_futures.append(pool.submit(visualize_tracking_data, visualization_queues[video_id], tracker_dim))
 
@@ -179,14 +185,15 @@ if __name__ == '__main__':
         
         if run_vlm:
             print("[Main]: Getting sampled frames")    
-            sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
+            sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, 
+                                    video_path_to_tracking_queue, args.max_num_frames, save_frame=False,
                                     resolution=args.resolution)
         
             print("[Main]: Starting frame ingestion into Milvus")
             milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager, ov_blip_embedder)
             
             # TODO: This is a temorary sleep and should be replaced with proper synchronization
-            time.sleep(60)
+            # time.sleep(60*10)
             
             print("[Main]: Starting chunk summary generation")
             cs_future = pool.submit(
@@ -198,7 +205,8 @@ if __name__ == '__main__':
                 args.max_new_tokens,
                 obj_detect_enabled,
                 milvus_manager,
-                True  # tracking_enabled
+                True,  # tracking_enabled
+                chunk_tracking_events
             )
 
             print("[Main]: Starting chunk summary ingestion into Milvus")
