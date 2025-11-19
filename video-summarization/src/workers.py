@@ -43,17 +43,14 @@ PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 
 TRACKING_LOGS_GENERATION_TIME_SECS = float(os.environ.get("TRACKING_LOGS_GENERATION_TIME_SECS", 1.0))
 MAX_EVENTS_BATCH = int(os.environ.get("MAX_EVENTS_BATCH", 10))
 EXIT_GAP_SECS = float(os.environ.get("EXIT_GAP_SECS", 3.0))
-
+VLM_TRACKING_MAX_WAIT_SECS = int(os.environ.get("VLM_TRACKING_MAX_WAIT_SECS", 300))
+VLM_TRACKING_CHECK_INTERVAL_SECS = int(os.environ.get("VLM_TRACKING_CHECK_INTERVAL_SECS", 10))
 
 # Resolution configurations
 VLM_RESOLUTION_X = int(os.environ.get("RESOLUTION_X", 480))
 VLM_RESOLUTION_Y = int(os.environ.get("RESOLUTION_Y", 270))
 TRACKER_WIDTH = int(os.environ.get("TRACKER_WIDTH", 700))
 TRACKER_HEIGHT = int(os.environ.get("TRACKER_HEIGHT", 450))
-
-# Movement analysis configuration
-ENABLE_MOVEMENT_ANALYSIS = os.environ.get("ENABLE_MOVEMENT_ANALYSIS", "FALSE").upper() == "TRUE"
-
 
 # Global locks
 global_track_locks = defaultdict(threading.Lock)
@@ -301,13 +298,6 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             )
             content.append({"type": "text", "text": detection_text})
 
-        # Add frame information as text context to ground the VLM response
-        # frame_ids = chunk.get("frame_ids", [])
-        # frame_info_text = f"You are analyzing {len(chunk['frames'])} sampled frames from this video chunk.\n"
-        # frame_info_text += f"Frame IDs being analyzed: {', '.join(map(str, frame_ids))}\n"
-        # frame_info_text += "Please reference these specific frame IDs in your analysis when describing activities or events.\n\n"
-        # content.append({"type": "text", "text": frame_info_text})
-
         # Add tracking information to enrich VLM context
         if tracking_enabled and milvus_manager:
             print("[VLM]: waiting for tracking data to be available")
@@ -315,12 +305,17 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             # Wait for tracking data to be processed for this chunk
             if chunk_tracking_events and chunk["chunk_id"] in chunk_tracking_events:
                 tracking_event = chunk_tracking_events[chunk["chunk_id"]]
-
-                # Wait up to 30 seconds for tracking data to be processed
-                if tracking_event.wait(timeout=60*0.5):
-                    print(f"[VLM]: tracking data ready for chunk {chunk['chunk_id']}")
+                for elapsed in range(0, VLM_TRACKING_MAX_WAIT_SECS, VLM_TRACKING_CHECK_INTERVAL_SECS):
+                    if tracking_event.wait(timeout=VLM_TRACKING_CHECK_INTERVAL_SECS):
+                        print(f"[VLM]: tracking ready for chunk {chunk['chunk_id']} after {elapsed}s")
+                        break
+                    print(f"[VLM]: waiting... {VLM_TRACKING_MAX_WAIT_SECS-elapsed-VLM_TRACKING_CHECK_INTERVAL_SECS}s left for {chunk['chunk_id']}")
                 else:
-                    print(f"[VLM]: timeout waiting for tracking data for chunk {chunk['chunk_id']}")
+                    print(f"[VLM]: timeout after {VLM_TRACKING_MAX_WAIT_SECS}s for chunk {chunk['chunk_id']}")
+                    
+                # Clean up the event after waiting is done 
+                del chunk_tracking_events[chunk["chunk_id"]]
+                print(f"[VLM]: cleaned up tracking event for chunk {chunk['chunk_id']}")
             
             print("[VLM]: adding tracking info")
             try:
@@ -331,63 +326,6 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                     video_path=chunk["chunk_path"]
                 )
 
-        #         if tracking_info["active_global_ids"]:
-        #             # Filter tracking data to only include frames that VLM will receive
-        #             vlm_frame_ids_set = set(frame_ids)
-        #             filtered_active_ids = set()
-        #             filtered_track_detections = {}
-        #             vlm_relevant_detections = 0                    
-        #             for track_id, detections in tracking_info["track_detections"].items():
-        #                 vlm_detections = [d for d in detections if d["frame_id"] in vlm_frame_ids_set]
-        #                 if vlm_detections:
-        #                     filtered_active_ids.add(track_id)
-        #                     filtered_track_detections[track_id] = vlm_detections
-        #                     vlm_relevant_detections += len(vlm_detections)
-                    
-        #             print(f"[VLM]: Filtered tracking data - {vlm_relevant_detections} detections from {len(filtered_active_ids)} persons in VLM frames")
-                    
-        #             if filtered_active_ids:
-        #                 tracking_lines = [
-        #                     f"Tracking context for VLM frames {frame_ids}:",
-        #                     f"Detected persons in these frames: {len(filtered_active_ids)} unique individuals with {vlm_relevant_detections} total detections"
-        #                 ]
-                        
-        #                 # Add specific track details with chronological frame information
-        #                 for track_id in list(filtered_active_ids):
-        #                     detections = filtered_track_detections.get(track_id, [])
-
-        #                     if detections:
-        #                         # Create chronological description for this person
-        #                         detection_descriptions = []
-        #                         for detection in detections:
-        #                             frame_id = detection["frame_id"]
-        #                             bbox = detection["bbox"]
-
-        #                             if bbox:
-        #                                 # Scale bounding box from tracker resolution to VLM resolution
-        #                                 scaled_bbox = scale_bbox_coordinates(bbox, TRACKER_WIDTH, TRACKER_HEIGHT, VLM_RESOLUTION_X, VLM_RESOLUTION_Y)
-        #                                 bbox_str = f"[{', '.join([f'{v:.1f}' for v in scaled_bbox])}]"
-        #                                 detection_descriptions.append(f"detected at frame {frame_id} at location {bbox_str}")
-                                
-        #                         if detection_descriptions:
-        #                             chronological_desc = "; ".join(detection_descriptions)
-                                    
-        #                             # Add movement analysis if enabled
-        #                             if ENABLE_MOVEMENT_ANALYSIS:
-        #                                 movement_analysis = analyze_movement_patterns(detections)
-        #                                 if movement_analysis["movement_summary"] != "insufficient data":
-        #                                     movement_desc = movement_analysis["movement_summary"]
-        #                                     chronological_desc += f" | Movement: {movement_desc}"
-                                    
-        #                             tracking_lines.append(f"Person {track_id}: {chronological_desc}")
-                    
-        #             tracking_text = ("\n".join(tracking_lines) +
-        #                 "\nConsider this tracking context in your summary. If specifying a person, please denote them by their global id.")
-
-        #             print("[VLM]:", frame_info_text)
-        #             print("[VLM]:", tracking_text)
-        #             print("[VLM]:", prompt)                    
-        #             content.append({"type": "text", "text": tracking_text})
             except Exception as e:
                 print(f"[VLM]: Failed to get tracking info: {e}")
         
@@ -543,8 +481,8 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         video_path = chunk["chunk_path"]
         vlm_frame_ids_for_chunk = set(chunk.get("vlm_frame_ids", []))
         chunk_id = chunk["chunk_id"]
-
-        # Create tracking event for this chunk if events dict is provided
+        
+        # Create tracking event for this chunk if asked
         if chunk_tracking_events is not None and chunk_id not in chunk_tracking_events:
             chunk_tracking_events[chunk_id] = threading.Event()
             print(f"[DeepSORT]: Created tracking event for chunk {chunk_id}")
@@ -567,6 +505,7 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         sampled = sampler.sample_frames_from_video(video_path, [])
         frames = sampled["frames"]
         frame_ids = sampled["frame_ids"]
+        print(f"[DeepSORT]: Sampled {len(frames)} frames for tracking from chunk {chunk_id}")
 
         # Setup video writer for output video with tracks if enabled
         if write_video:                
@@ -583,6 +522,11 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         # Run tracking on sampled frames
         h, w = None, None
         chunk_tracking_results = []
+        
+        # Pre-calculate chunk time strings for use in results
+        chunk_start_time_str = chunk["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["start_time"], datetime) else str(chunk["start_time"])
+        chunk_end_time_str = chunk["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["end_time"], datetime) else str(chunk["end_time"])
+        
         for (i, frame), frame_id in zip(enumerate(frames), frame_ids):
             # Preprocess frame for detection
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
@@ -653,17 +597,13 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
                 out.write(frame_with_tracks)
             
             if identities is None or len(identities) == 0:
-                continue
+                continue            
             
             # Check if this frame should be ingested to Milvus (checking if sampled for VLM)
             should_ingest = frame_id in vlm_frame_ids_for_chunk
-            if should_ingest:
-                print(f"[DeepSORT]: Frame ID {frame_id}, Should Ingest to Milvus: {should_ingest}")    
+            # if should_ingest:
+            #     print(f"[DeepSORT]: Frame ID {frame_id}, Should Ingest to Milvus: {should_ingest}")    
 
-            # String version of start and end times
-            chunk_start_time_str = chunk["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["start_time"], datetime) else str(chunk["start_time"])
-            chunk_end_time_str = chunk["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["end_time"], datetime) else str(chunk["end_time"])
-            
             # Accumulate tracking results for this frame
             tracking_res = {
                 "frame_id": frame_id,
@@ -692,6 +632,25 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
 
         if len(chunk_tracking_results) > 0:
             tracking_results_queue.put(chunk_tracking_results)
+        else:
+            # Send empty batch to ensure ReID processor knows this chunk was processed
+            # This is important for chunks with no people detected to prevent VLM from waiting indefinitely
+            empty_result = {
+                "frame_id": -1,  # Dummy value indicating empty chunk
+                "frame_video_time": 0,
+                "chunk_id": chunk["chunk_id"],
+                "bboxes": [],
+                "object_class": [],
+                "track_ids": [],
+                "reid_embeddings": [],
+                "video_path": chunk["video_path"], 
+                "chunk_path": chunk["chunk_path"],
+                "start_time": chunk_start_time_str,
+                "end_time": chunk_end_time_str,
+                "should_ingest_to_milvus": False
+            }
+            tracking_results_queue.put([empty_result])
+            print(f"[DeepSORT]: Sent empty result for chunk {chunk['chunk_id']} (no people detected)")
             
         # Release video writer if enabled
         if out is not None:
@@ -1145,6 +1104,11 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
             # Track which chunks we've processed
             chunk_id = frame.get("chunk_id")
             processed_chunks.add(chunk_id)
+            
+            # Check if this is an empty frame (sentinel from DeepSORT for chunks with no detections)
+            if frame.get("frame_id") == -1:
+                print(f"[ReID Processor]: Received empty frame for chunk {chunk_id}, skipping ReID processing")
+                continue
             
             global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources = insert_reid_embeddings(frame, milvus_manager, collection_name)
 

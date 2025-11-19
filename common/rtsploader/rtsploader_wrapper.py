@@ -203,9 +203,9 @@ class RTSPChunkLoader(BaseLoader):
 
     def _format_times(self, start_time, end_time):
         if self.is_file:
-            return f"{start_time:.2f}s", f"{end_time:.2f}s"
+            return float(start_time), float(end_time)
         else:
-            return datetime.fromtimestamp(start_time).isoformat(), datetime.fromtimestamp(end_time).isoformat()
+            return (datetime.fromtimestamp(start_time, tz=timezone.utc), datetime.fromtimestamp(end_time, tz=timezone.utc))
 
     def lazy_load(self) -> Iterator[Document]:
         """Lazily load RTSP stream chunks as LangChain Documents."""

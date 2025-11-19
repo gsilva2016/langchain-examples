@@ -191,10 +191,7 @@ if __name__ == '__main__':
         
             print("[Main]: Starting frame ingestion into Milvus")
             milvus_frames_future = pool.submit(ingest_frames_into_milvus, milvus_frames_queue, milvus_manager, ov_blip_embedder)
-            
-            # TODO: This is a temorary sleep and should be replaced with proper synchronization
-            # time.sleep(60*10)
-            
+                        
             print("[Main]: Starting chunk summary generation")
             cs_future = pool.submit(
                 generate_chunk_summaries,
