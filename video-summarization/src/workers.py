@@ -366,8 +366,8 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
         print(f"[CHUNK LOADER]: Chunking video: {video_path} and chunk path: {doc.metadata['chunk_path']}")
         
         # String version of start and end times
-        chunk_start_time_str = doc.metadata["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(doc.metadata["start_time"], datetime) else str(doc.metadata["start_time"])
-        chunk_end_time_str = doc.metadata["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(doc.metadata["end_time"], datetime) else str(doc.metadata["end_time"])
+        chunk_start_time_str = doc.metadata["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(doc.metadata["start_time"], datetime) else doc.metadata["start_time"]
+        chunk_end_time_str = doc.metadata["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(doc.metadata["end_time"], datetime) else doc.metadata["end_time"]
 
         chunk = {
             "video_path": doc.metadata["source"],
@@ -529,8 +529,8 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             # Accumulate tracking results for this frame
             
             # String version of start and end times
-            chunk_start_time_str = chunk["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["start_time"], datetime) else str(chunk["start_time"])
-            chunk_end_time_str = chunk["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["end_time"], datetime) else str(chunk["end_time"])
+            chunk_start_time_str = chunk["start_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["start_time"], datetime) else chunk["start_time"]
+            chunk_end_time_str = chunk["end_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(chunk["end_time"], datetime) else chunk["end_time"]
 
             tracking_res = {
                 "frame_id": frame_id,
@@ -903,9 +903,9 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                     event = {
                         "global_track_id": gid,
                         "event_type": event_type,
-                        "first_detected": snapshot["first_detected"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(snapshot["first_detected"], datetime) else str(snapshot["first_detected"]),
+                        "first_detected": snapshot["first_detected"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(snapshot["first_detected"], datetime) else snapshot["first_detected"],
                         "event_creation_timestamp": current_ts,
-                        "last_update": frame_video_time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(frame_video_time, datetime) else str(frame_video_time),
+                        "last_update": frame_video_time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(frame_video_time, datetime) else frame_video_time,
                         "last_camera": camera_id,
                         "is_assigned": snapshot["is_assigned"],
                         "seen_in": list(snapshot["seen_in"]),
@@ -930,9 +930,9 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
                         event = {
                             "global_track_id": gid,
                             "event_type": "exit",
-                            "first_detected": state["entry_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(state["entry_time"], datetime) else str(state["entry_time"]),
+                            "first_detected": state["entry_time"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(state["entry_time"], datetime) else state["entry_time"],
                             "event_creation_timestamp": current_ts,
-                            "last_update": state["last_seen"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(state["last_seen"], datetime) else str(state["last_seen"]),
+                            "last_update": state["last_seen"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(state["last_seen"], datetime) else state["last_seen"],
                             "last_camera": state["last_camera"],
                             "is_assigned": global_track_table.get(gid, {}).get("is_assigned", False),
                             "seen_in": list(global_track_table.get(gid, {}).get("seen_in", [])),
