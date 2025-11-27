@@ -9,9 +9,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from common.regenerate_summary_agent.agent import regenerate_summary_agent
 import os
-from typing import List
 import re
-from collections import OrderedDict
 
 # Helper: Convert seconds to mm:ss
 def format_time(seconds):
@@ -22,16 +20,6 @@ def format_time(seconds):
         return f"{mins:02d}:{secs:02d}"
     except:
         return f"{seconds}s"
-
-# Helper: Extract IDs mentioned in original summary
-def extract_visible_ids(summary):
-    if re.search(r'No visible individuals in the video', summary, re.IGNORECASE):
-        return []
-    candidates = []
-    candidates += re.findall(r'-\s*([a-zA-Z0-9]{6})', summary)
-    candidates += re.findall(r'GID:\s*([a-zA-Z0-9]{6})\b', summary)
-    valid_ids = [cid for cid in candidates if cid.isdigit() or (re.search(r'[A-Za-z]', cid) and re.search(r'\d', cid))]
-    return list(OrderedDict.fromkeys(valid_ids))
 
 def clean_summary(text):
     if not text:
@@ -96,11 +84,11 @@ async def run_enhance_summarization(args):
         collection_log_data = milvus_manager.query(
             collection_name="tracking_logs",
             filter=filter_expr_track,
-            limit=100,
+            limit=20,
             output_fields=["pk", "metadata", "vector"])
-        # collection_log_data= milvus_manager.query(collection_name="tracking_logs", filter=f'metadata["last_update"] >= "0.0" AND metadata["last_update"] <= "29.9"', output_fields=["pk", "metadata", "vector"], limit=1)
-        print(f"Total items retrieved from DB: {len(collection_log_data)}")
-        # print(f"logs found for timeframe {start_time} - {end_time}.")
+     
+        print(f"Total items retrieved from DB: {len(collection_log_data)} between {start_time} and {end_time} ")
+     
         if not collection_log_data:
             updated_summary = f"No events detected between {start_time} and {end_time}."
             print(f"Time Frame: {start_time} - {end_time}\nUpdated Summary:\n{updated_summary}\n")
@@ -149,7 +137,7 @@ async def run_enhance_summarization(args):
         6.Mention Global IDs Clearly: Always include the Global ID in the summary.
         7.Briefly Describe New Individuals: When introducing a new Global ID, add a short phrase (e.g., “another person GID 0b1d2a entered at 00:54 and exited at 00:56”).
         8.Ensure Cohesion: Do not simply append detection logs; produce a single, well-structured summary.
-        9. Camera Info (Optional): If camera details are available, integrate them naturally (e.g., “as seen on camera D02_20250918150609_001.mp4”).
+        9.Camera Info (Optional): If camera details are available, integrate them naturally (e.g., “as seen on camera D02_20250918150609_001.mp4”).
         
         Return only the rewritten summary.
         """
