@@ -410,3 +410,19 @@ To stop, start or delete the DB:
 3. You can stop Milvus using the following command: `bash standalone_embed.sh stop`
  
 4. You can delete Milvus data using the following command: `bash standalone_embed.sh delete`
+
+## Run regenerate summary Agent
+
+To enable regenerate summary Agent flow, which generates an enhanced chunk summary based on metadata stored in MilvusDB and stores the updated summaries back to VIDEO_COLLECTION_NAME, run the following command:
+```
+./run-demo.sh --run_regenerate_summary_agent
+```
+Note: Ensure that MilvusDB is properly set up and contains the necesseray data before running the agent.
+
+## Run merge summary Agent
+
+To enable merge summary Agent flow, which recursively generates a long video summary (~15minutes) summary based on chunk summaries, run the following command:
+```
+./run-demo.sh --run_merge_summary_agent
+```
+Note: Ensure that MilvusDB is properly set up and contains the necesseray data before running the agent. Run regenerate summary agent before running merge summary agent for data dependency. 
