@@ -18,7 +18,7 @@ fi
 
 hf auth login --token $HUGGINGFACE_TOKEN
 
-if [ "$1" == "--skip" ] || [ "$2" == "--skip" ]; then
+if [ "$1" == "--skip" ] || [ "$2" == "--skip" ] || [ "$1" == "--run_regenerate_summary_agent" ] || [ "$1"=="--run_merge_summary_agent" ] ; then
 	echo "Skipping sample video download"
 else
     # Download sample video
@@ -53,7 +53,18 @@ if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then
     --collection_name "$VIDEO_COLLECTION_NAME" --retrieve_top_k "$RETRIEVE_TOP_K" --save_video_clip "$SAVE_VIDEO_CLIP" --video_clip_duration "$VIDEO_CLIP_DURATION"
 
     echo "RAG completed"
-
+elif [ "$1" == "--run_merge_summary_agent" ]; then
+    bash run-vllm-cpu.sh
+	echo "Waiting for vllm to warm up..."
+	# sleep 60
+	echo "Running merge summary agent"
+    PYTHONPATH=$PROJECT_ROOT_DIR python src/run_merge_summary_agent.py --milvus_uri "$MILVUS_HOST" --milvus_port "$MILVUS_PORT" --milvus_dbname "$MILVUS_DBNAME" --collection_name "$VIDEO_COLLECTION_NAME"
+elif [ "$1" == "--run_regenerate_summary_agent" ]; then
+    bash run-vllm-cpu.sh
+	echo "Waiting for vllm to warm up..."
+#	sleep 60
+	echo "Running regenerate summary agent"
+    PYTHONPATH=$PROJECT_ROOT_DIR python src/run_regenerate_summary_agent.py --milvus_uri "$MILVUS_HOST" --milvus_port "$MILVUS_PORT" --milvus_dbname "$MILVUS_DBNAME" --collection_name "$VIDEO_COLLECTION_NAME"
 else
     if [ "$RUN_VLM_PIPELINE" == "TRUE" ]; then
         echo "Running VLM pipeline on video"

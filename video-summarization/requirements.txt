@@ -6,7 +6,7 @@ einops
 decord
 ../langchain-integrations/langchain-summarymerge-score
 ../langchain-integrations/langchain-openvino-multimodal
-pymilvus
+pymilvus==2.6.2
 langchain_milvus
 python-dotenv
 optimum-intel@git+https://github.com/huggingface/optimum-intel.git
@@ -14,3 +14,5 @@ nncf
 huggingface_hub
 openvino-genai==2025.1.0
 opencv-python
+google-adk==1.5.0
+litellm
