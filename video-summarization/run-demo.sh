@@ -18,7 +18,7 @@ fi
 
 hf auth login --token $HUGGINGFACE_TOKEN
 
-if [ "$1" == "--skip" ] || [ "$2" == "--skip" ] || [ "$1" == "--run_regenerate_summary_agent" ] || [ "$1"=="--run_merge_summary_agent" ] ; then
+if [ "$1" == "--skip" ] || [ "$2" == "--skip" ] || [ "$1" == "--run_regenerate_summary_agent" ] || [ "$1" == "--run_merge_summary_agent" ] ; then
 	echo "Skipping sample video download"
 else
     # Download sample video
