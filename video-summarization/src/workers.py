@@ -318,6 +318,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                 print(f"[VLM]: cleaned up tracking event for chunk {chunk['chunk_id']}")
             
             print("[VLM]: adding tracking info")
+            tracking_info = None
             try:
                 # Get current tracking info
                 tracking_info = get_tracking_info(
@@ -325,16 +326,17 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                     chunk_start_time=chunk["start_time"],
                     video_path=chunk["chunk_path"]
                 )
-
+                print(f"[VLM]: Retrieved tracking info: {len(tracking_info.get('active_global_ids', []))} active IDs")
             except Exception as e:
                 print(f"[VLM]: Failed to get tracking info: {e}")
         
+        print(f"[VLM]: Starting frame processing for {len(chunk['frames'])} frames")
         # Convert frames to base64-encoded images for VLM input
         for i, frame in enumerate(chunk["frames"]):
             frame_copy = frame.copy()
             
             # Draw tracking overlays if tracking is enabled and we have tracking info
-            if tracking_enabled and milvus_manager and 'tracking_info' in locals() and tracking_info.get("active_global_ids"):
+            if tracking_enabled and milvus_manager and tracking_info is not None and tracking_info.get("active_global_ids"):
                 try:
                     current_frame_id = chunk.get("frame_ids", [])[i] if i < len(chunk.get("frame_ids", [])) else None
                     if current_frame_id is not None:
@@ -350,7 +352,8 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
                             "type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}
                             })
-                
+        
+        print(f"[VLM]: Finished processing {len(chunk['frames'])} frames, preparing prompt")
         # Prepare the text prompt content for the VLM request
         content.append({"type": "text", "text": prompt})
 
@@ -372,6 +375,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
             ]
         }
 
+        print(f"[VLM]: Sending request to {OVMS_ENDPOINT}")
         # Send the request to the VLM model endpoint
         response = requests.post(OVMS_ENDPOINT, 
                                  json=data, 
@@ -657,6 +661,11 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
             }
             tracking_results_queue.put([empty_result])
             print(f"[DeepSORT]: Sent empty result for chunk {chunk['chunk_id']} (no people detected)")
+        
+        # Signal that tracking has finished for this chunk
+        if chunk_tracking_events is not None and chunk_id in chunk_tracking_events:
+            chunk_tracking_events[chunk_id].set()
+            print(f"[DeepSORT]: Tracking finished for chunk {chunk_id}")
             
         # Release video writer if enabled
         if out is not None:
@@ -1072,7 +1081,7 @@ def insert_reid_embeddings(frame: dict, milvus_manager: MilvusManager, collectio
 
     return global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources
 
-def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data", chunk_tracking_events: dict = None):
+def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q: queue.Queue, visualization_queue: queue.Queue, global_track_table: dict, milvus_manager: MilvusManager, collection_name: str = "reid_data"):
     """
     Processes tracking results and inserts ReID embeddings into Milvus with global ID assignment.
     Also updates global track table and sends data for visualization.
@@ -1104,14 +1113,10 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
             continue
 
         viz_batch = []
-        processed_chunks = set()  
 
         for frame in frame_batch:
-            # Track which chunks we've processed
-            chunk_id = frame.get("chunk_id")
-            processed_chunks.add(chunk_id)
-            
             # Check if this is an empty frame (sentinel from DeepSORT for chunks with no detections)
+            chunk_id = frame.get("chunk_id")
             if frame.get("frame_id") == -1:
                 print(f"[ReID Processor]: Received empty frame for chunk {chunk_id}, skipping ReID processing")
                 continue
@@ -1212,13 +1217,6 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
             viz_batch.append((frame, local_global_mapping))
 
         visualization_queue.put(viz_batch)
-        
-        # Signal that tracking data is ready for these chunks
-        if chunk_tracking_events:
-            for chunk_id in processed_chunks:
-                if chunk_id in chunk_tracking_events:
-                    chunk_tracking_events[chunk_id].set()
-                    print(f"[ReID Processor]: Signaled tracking data ready for chunk {chunk_id}")
 
     with local_state_lock:
         track_rolling_avgs.clear()
