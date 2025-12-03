@@ -134,7 +134,8 @@ if __name__ == '__main__':
                 obj_detect_model_path,
                 obj_detect_sample_rate,
                 obj_detect_threshold,
-                chunking_mechanism
+                chunking_mechanism,
+                chunk_tracking_events if run_reid else None
             ))
 
         reid_futures = []
@@ -202,8 +203,8 @@ if __name__ == '__main__':
                 args.max_new_tokens,
                 obj_detect_enabled,
                 milvus_manager,
-                True,  # tracking_enabled
-                chunk_tracking_events
+                run_reid,  # tracking_enabled
+                chunk_tracking_events if run_reid else None
             )
 
             print("[Main]: Starting chunk summary ingestion into Milvus")

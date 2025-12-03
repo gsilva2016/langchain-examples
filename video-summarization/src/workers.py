@@ -43,8 +43,8 @@ PARTITION_CREATION_INTERVAL = int(os.environ.get("PARTITION_CREATION_INTERVAL", 
 TRACKING_LOGS_GENERATION_TIME_SECS = float(os.environ.get("TRACKING_LOGS_GENERATION_TIME_SECS", 1.0))
 MAX_EVENTS_BATCH = int(os.environ.get("MAX_EVENTS_BATCH", 10))
 EXIT_GAP_SECS = float(os.environ.get("EXIT_GAP_SECS", 3.0))
-VLM_TRACKING_MAX_WAIT_SECS = int(os.environ.get("VLM_TRACKING_MAX_WAIT_SECS", 300))
-VLM_TRACKING_CHECK_INTERVAL_SECS = int(os.environ.get("VLM_TRACKING_CHECK_INTERVAL_SECS", 10))
+VLM_TRACKING_MAX_WAIT_SECS = int(os.environ.get("VLM_TRACKING_MAX_WAIT_SECS", 60))
+VLM_TRACKING_CHECK_INTERVAL_SECS = int(os.environ.get("VLM_TRACKING_CHECK_INTERVAL_SECS", 5))
 
 # Resolution configurations
 VLM_RESOLUTION_X = int(os.environ.get("RESOLUTION_X", 480))
@@ -405,7 +405,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
 def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue,
                     obj_detect_enabled: bool, obj_detect_path: str, 
                     obj_detect_sample_rate: int, obj_detect_threshold: float, 
-                    chunking_mechanism: str = "sliding_window"):
+                    chunking_mechanism: str = "sliding_window", chunk_tracking_events: dict = None):
     # Initialize the video chunk loader
     chunk_args = {
         "window_size": chunk_duration,
@@ -441,6 +441,13 @@ def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, ch
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "detected_objects": doc.metadata["detected_objects"]
         }
+        
+        # Pre-create tracking event for this chunk to avoid race conditions
+        if chunk_tracking_events is not None:
+            chunk_id = doc.metadata["chunk_id"]
+            chunk_tracking_events[chunk_id] = threading.Event()
+            print(f"[CHUNK LOADER]: Pre-created tracking event for chunk {chunk_id}")
+        
         chunk_queue.put(chunk)
     # Note: tracking_chunk_queue will be populated by get_sampled_frames with VLM frame IDs
     print(f"[CHUNK LOADER]: Chunk generation completed for {video_path}")
@@ -482,10 +489,9 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         vlm_frame_ids_for_chunk = set(chunk.get("vlm_frame_ids", []))
         chunk_id = chunk["chunk_id"]
         
-        # Create tracking event for this chunk if asked
-        if chunk_tracking_events is not None and chunk_id not in chunk_tracking_events:
-            chunk_tracking_events[chunk_id] = threading.Event()
-            print(f"[DeepSORT]: Created tracking event for chunk {chunk_id}")
+        # Tracking events are now pre-created during chunk generation
+        if chunk_tracking_events is not None and chunk_id in chunk_tracking_events:
+            print(f"[DeepSORT]: Using tracking event for chunk {chunk_id}")
 
         # Initialte sampler if not already done
         if sampler is None:
