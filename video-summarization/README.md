@@ -186,8 +186,9 @@ VLM_DEVICE="GPU"
 
 INPUT_FILE="one-by-one-person-detection.mp4"
 
-RESOLUTION_X=480
-RESOLUTION_Y=270
+RESOLUTION_X=384
+RESOLUTION_Y=216
+MAX_NUM_FRAMES=16
 
 PROMPT='As an expert investigator, please analyze this video. Summarize the video, highlighting any shoplifting or suspicious activity. The output must contain the following 3 sections: Overall Summary, Activity Observed, Potential Suspicious Activity. It should be formatted similar to the following example:
 

@@ -24,8 +24,8 @@ if __name__ == '__main__':
                         help="Maximum number of tokens to be generated.",
                         default=500)
     parser.add_argument("-f", "--max_num_frames", type=int,
-                        help="Maximum number of frames to be sampled per chunk for inference. Set to a smaller number if OOM.",
-                        default=32)
+                        help="Maximum number of frames to be sampled per chunk for inference. Overrides MAX_NUM_FRAMES from .env if provided.",
+                        default=None)
     parser.add_argument("-c", "--chunk_duration", type=int,
                         help="Maximum length in seconds for each chunk of video.",
                         default=30)
@@ -47,6 +47,9 @@ if __name__ == '__main__':
     save_reid_videos = os.getenv("SAVE_REID_VIZ_VIDEOS", "FALSE").upper() == "TRUE"
     overwrite_milvus_collections = os.getenv("OVERWRITE_MILVUS_COLLECTION", "FALSE").upper() == "TRUE"
     print(f"Run VLM Pipeline: {run_vlm}, Run REID Pipeline: {run_reid}, Save REID Videos: {save_reid_videos}, Overwrite Milvus Collections: {overwrite_milvus_collections}")
+    
+    # Get max_num_frames from env or command line (command line takes precedence)
+    max_num_frames = args.max_num_frames if args.max_num_frames is not None else int(os.getenv("MAX_NUM_FRAMES", 32))
     
     chunking_mechanism = os.getenv("CHUNKING_MECHANISM", "sliding_window")
     obj_detect_enabled = os.getenv("OBJ_DETECT_ENABLED", "TRUE").upper() == "TRUE"
@@ -187,7 +190,7 @@ if __name__ == '__main__':
         if run_vlm:
             print("[Main]: Getting sampled frames")    
             sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, 
-                                    video_path_to_tracking_queue, args.max_num_frames, save_frame=False,
+                                    video_path_to_tracking_queue, max_num_frames, save_frame=False,
                                     resolution=args.resolution)
         
             print("[Main]: Starting frame ingestion into Milvus")
