@@ -692,9 +692,8 @@ def show_tracking_data(global_track_ids: dict, interval = 5):
             print("****************************")
         print("-----------------------------------------------------------------------------------------------------")
 
-
 def process_tracking_logs(tracking_logs_q: queue.Queue, milvus_manager: MilvusManager, ov_blip_embedder: OpenVINOBlipEmbeddings, collection_name: str = "tracking_logs"):
-    last_event_time = defaultdict(lambda: 0)
+    last_event_time = defaultdict(lambda: 0.0)
     events = []
     wait_interval = 0.5  
     last_flush = time.time()
@@ -702,20 +701,40 @@ def process_tracking_logs(tracking_logs_q: queue.Queue, milvus_manager: MilvusMa
     while True:
         try:
             event = tracking_logs_q.get(timeout=wait_interval)
+            
             if event is None:
                 break
 
             gid = event["global_track_id"]
-            now = time.time()
-
             event_type = event.get("event_type", "")
+            
             if event_type in ("entry", "exit"):
                 events.append(event)
                 
-            # Process event only if greater than TRACKING_LOGS_GENERATION_TIME_SECS, prevents too many events
-            elif now - last_event_time[gid] >= TRACKING_LOGS_GENERATION_TIME_SECS:
-                last_event_time[gid] = now
-                events.append(event)
+            else:
+                raw_video_time = event.get("last_update", None)
+                video_time = None
+                
+                if isinstance(raw_video_time, (int, float)):
+                    video_time = float(raw_video_time)
+                
+                elif isinstance(raw_video_time, str):
+                    try:
+                        video_time = float(raw_video_time)
+                    except ValueError:
+                        try:
+                            dt = datetime.strptime(raw_video_time, "%Y-%m-%d %H:%M:%S")
+                            video_time = dt.timestamp()
+                        except Exception:
+                            video_time = None
+                
+                if video_time is None:
+                    events.append(event)
+                
+                else:
+                    if video_time - last_event_time[gid] >= TRACKING_LOGS_GENERATION_TIME_SECS:
+                        last_event_time[gid] = video_time
+                        events.append(event)
 
         except queue.Empty:
             pass
