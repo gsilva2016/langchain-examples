@@ -107,7 +107,10 @@ class RTSPChunkLoader(BaseLoader):
         if len(self.frame_buffer) == self.window_size or last_chunk:
             # Retain start_time, end_time and chunk_id for metadata
             start_time = self.buffer_start_time
-            end_time = start_time + (self.window_size / self.fps)
+            if last_chunk:
+                end_time = start_time + (len(self.frame_buffer) / self.fps)
+            else:
+                end_time = start_time + (self.window_size / self.fps)
             chunk_id = str(uuid.uuid4())
             
             formatted_time = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S')
