@@ -44,7 +44,7 @@ if __name__ == '__main__':
     load_dotenv()
     run_vlm = os.getenv("RUN_VLM_PIPELINE", "TRUE").upper() == "TRUE"
     run_reid = os.getenv("RUN_REID_PIPELINE", "TRUE").upper() == "TRUE"
-    save_reid_videos = os.getenv("SAVE_REID_VIZ_VIDOES", "FALSE").upper() == "TRUE"
+    save_reid_videos = os.getenv("SAVE_REID_VIZ_VIDEOS", "FALSE").upper() == "TRUE"
     overwrite_milvus_collections = os.getenv("OVERWRITE_MILVUS_COLLECTION", "FALSE").upper() == "TRUE"
     print(f"Run VLM Pipeline: {run_vlm}, Run REID Pipeline: {run_reid}, Save REID Videos: {save_reid_videos}, Overwrite Milvus Collections: {overwrite_milvus_collections}")
     

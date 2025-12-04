@@ -75,6 +75,12 @@ else
         python export_model.py text_generation --source_model $LLAMA_MODEL --weight-format int4 --config_file_path models/config.json --model_repository_path models --target_device $export_device --cache 2 --pipeline_type LM --overwrite_models
 
     elif [ "$export_device" == "NPU" ]; then
+        if [ ! -e "/dev/accel/accel0" ]; then
+            echo "Error: NPU device /dev/accel/accel0 not found."
+            echo "Download and install the latest drivers from:"
+            echo "https://github.com/intel/linux-npu-driver/releases"
+            exit 1
+        fi
         python export_model.py text_generation --source_model $LLAMA_MODEL --weight-format int4 --config_file_path models/config.json --model_repository_path models --target_device $export_device --max_prompt_len 1500 --pipeline_type LM --overwrite_models
     else
         echo "Invalid SUMMARY_MERGER_LLM_DEVICE value. Please set it to GPU (or GPU.0, GPU.1, etc.), CPU or NPU in .env file."

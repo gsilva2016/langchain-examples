@@ -17,11 +17,18 @@ class MilvusManager:
         self.milvus_port = os.getenv("MILVUS_PORT", port)
 
         test_client = MilvusClient(
-            uri=f"http://{self.milvus_host}:{self.milvus_port}",
-            db_name=self.milvus_dbname
+            uri=f"http://{self.milvus_host}:{self.milvus_port}"
         )
+        dbs = test_client.list_databases()
+        if self.milvus_dbname not in dbs:
+            print(f"Database {self.milvus_dbname} does not exist. Creating it.")
+            test_client.create_database(self.milvus_dbname)
+        else:
+            print(f"Database {self.milvus_dbname} already exists.")
+        
         print(f"Connected to Milvus at {self.milvus_host}:{self.milvus_port} "
               f"using database {self.milvus_dbname}")
+        
 
     def _get_client(self) -> MilvusClient:
         """
@@ -56,7 +63,7 @@ class MilvusManager:
                 field_name="vector",
                 index_type="FLAT",
                 index_name="vector_index",
-                metric_type="COSINE",
+                metric_type="COSINE"
             )
 
             client.create_collection(
@@ -127,7 +134,7 @@ class MilvusManager:
             if not client.has_collection(collection_name):
                 raise ValueError(f"Collection {collection_name} does not exist.")
 
-            search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+            search_params = {"metric_type": "COSINE"}
 
             if partition_names:
                 existing_partitions = client.list_partitions(collection_name)
