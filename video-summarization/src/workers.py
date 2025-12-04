@@ -55,6 +55,7 @@ TRACKER_HEIGHT = int(os.environ.get("TRACKER_HEIGHT", 450))
 # Global locks
 global_track_locks = defaultdict(threading.Lock)
 global_assignment_lock = threading.Lock()
+vlm_inference_lock = threading.Lock()
 
 # Shared across threads
 track_rolling_avgs = defaultdict(lambda: deque(maxlen=8))
@@ -376,18 +377,19 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         }
 
         print(f"[VLM]: Sending request to {OVMS_ENDPOINT}")
-        # Send the request to the VLM model endpoint
-        response = requests.post(OVMS_ENDPOINT, 
-                                 json=data, 
-                                 headers={"Content-Type": "application/json"})
+        # Send the request to the VLM model endpoint (locked to prevent concurrent GPU access)
+        with vlm_inference_lock:
+            response = requests.post(OVMS_ENDPOINT, 
+                                     json=data, 
+                                     headers={"Content-Type": "application/json"})
 
-        if response.status_code == 200:
-            output_json = response.json()
-            output_text = output_json["choices"][0]["message"]["content"]
-            print("[VLM]: Model response:", output_json)
-        else:
-            print("[VLM]: Error:", response.status_code, response.text)
-            continue
+            if response.status_code == 200:
+                output_json = response.json()
+                output_text = output_json["choices"][0]["message"]["content"]
+                print("[VLM]: Model response:", output_json)
+            else:
+                print("[VLM]: Error:", response.status_code, response.text)
+                continue
         
         chunk_summary = {
             "video_path": chunk["video_path"],
@@ -493,7 +495,8 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
         vlm_frame_ids_for_chunk = set(chunk.get("vlm_frame_ids", []))
         chunk_id = chunk["chunk_id"]
         
-        # Tracking events are now pre-created during chunk generation
+        # Tracking events are now pre-created during chunk generation. 
+        # This helps ensure the VLM has access to tracking data.
         if chunk_tracking_events is not None and chunk_id in chunk_tracking_events:
             print(f"[DeepSORT]: Using tracking event for chunk {chunk_id}")
 
@@ -642,25 +645,6 @@ def generate_deepsort_tracks(tracking_chunk_queue: queue.Queue, tracking_results
 
         if len(chunk_tracking_results) > 0:
             tracking_results_queue.put(chunk_tracking_results)
-        else:
-            # Send empty batch to ensure ReID processor knows this chunk was processed
-            # This is important for chunks with no people detected to prevent VLM from waiting indefinitely
-            empty_result = {
-                "frame_id": -1,  # Dummy value indicating empty chunk
-                "frame_video_time": 0,
-                "chunk_id": chunk["chunk_id"],
-                "bboxes": [],
-                "object_class": [],
-                "track_ids": [],
-                "reid_embeddings": [],
-                "video_path": chunk["video_path"], 
-                "chunk_path": chunk["chunk_path"],
-                "start_time": chunk_start_time_str,
-                "end_time": chunk_end_time_str,
-                "should_ingest_to_milvus": False
-            }
-            tracking_results_queue.put([empty_result])
-            print(f"[DeepSORT]: Sent empty result for chunk {chunk['chunk_id']} (no people detected)")
         
         # Signal that tracking has finished for this chunk
         if chunk_tracking_events is not None and chunk_id in chunk_tracking_events:
@@ -1115,12 +1099,6 @@ def process_reid_embeddings(tracking_results_queue: queue.Queue, tracking_logs_q
         viz_batch = []
 
         for frame in frame_batch:
-            # Check if this is an empty frame (sentinel from DeepSORT for chunks with no detections)
-            chunk_id = frame.get("chunk_id")
-            if frame.get("frame_id") == -1:
-                print(f"[ReID Processor]: Received empty frame for chunk {chunk_id}, skipping ReID processing")
-                continue
-            
             global_assigned_ids, local_track_ids, is_new_tracks, global_track_sources = insert_reid_embeddings(frame, milvus_manager, collection_name)
 
             frame_video_time = frame.get("frame_video_time", 0.0)

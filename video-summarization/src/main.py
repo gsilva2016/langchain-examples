@@ -172,7 +172,7 @@ if __name__ == '__main__':
             print("[Main]: Starting re-id embedding processing")
 
             for video_id, video in videos.items():
-                reid_futures.append(pool.submit(process_reid_embeddings, tracking_results_queues[video_id], tracking_logs_queue, visualization_queues[video_id], global_track_ids, milvus_manager, "reid_data", chunk_tracking_events))
+                reid_futures.append(pool.submit(process_reid_embeddings, tracking_results_queues[video_id], tracking_logs_queue, visualization_queues[video_id], global_track_ids, milvus_manager, "reid_data"))
                 if save_reid_videos:
                     viz_futures.append(pool.submit(visualize_tracking_data, visualization_queues[video_id], tracker_dim))
 
@@ -240,9 +240,9 @@ if __name__ == '__main__':
         for viz_future in viz_futures:
             viz_future.result()
 
-        global_track_ids[-1] = {}
-        
+        # Set sentinel BEFORE waiting for show_tracking_data to exit
         if generate_logs_future:
+            global_track_ids[-1] = {}
             generate_logs_future.result()
         
         tracking_logs_queue.put(None)
