@@ -1,0 +1,7 @@
+../langchain-integrations/langchain-openvino-asr
+langchain-community==0.3.27
+langchain-huggingface @ git+https://github.com/langchain-ai/langchain.git@34638ccfae3960f7b94c7f1fac7ee058ad806ea1#egg=libs/partners/huggingface\&subdirectory=libs/partners/huggingface
+streamlit
+librosa
+numpy
+soundfile
