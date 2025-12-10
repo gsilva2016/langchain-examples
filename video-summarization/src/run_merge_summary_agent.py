@@ -12,8 +12,10 @@ import os
 from typing import List
 import re
 
+NUMBER_OF_INITIAL_SUMMARIES = 4
+NUMBER_OF_RECURSIVE_SUMMARIES = 3
 
-def query_summaries_from_db(collection_data, batch_size=5):
+def query_summaries_from_db(collection_data, batch_size=NUMBER_OF_INITIAL_SUMMARIES):
     intermediate_summaries = []
     batch = []
     for idx, item in enumerate(collection_data):
@@ -31,7 +33,7 @@ def query_summaries_from_db(collection_data, batch_size=5):
 def make_user_message(summaries):
     prompt = f"""
     Task:
-    You are responsible for summarizing these batches of video summaries. Each batch contains up to 5 summaries.
+    You are responsible for summarizing these batches of video summaries. Each batch contains up to {NUMBER_OF_INITIAL_SUMMARIES} summaries.
     
     Batches of summaries:
     {' '.join(summaries)}
@@ -73,30 +75,96 @@ def make_user_message(summaries):
     You are rewriting a video summary using the original summary and detection metadata.
     """
     return types.Content(role="user", parts=[types.Part(text=prompt)])
+    
+def make_user_message_recursive(summaries, include_pre_merge_enumeration: bool = False):
+    """
+    Build a robust user message instructing the model to merge multiple intermediate summaries
+    into ONE consolidated summary without losing any details.
 
-def make_user_message_recursive(summaries):
+    Parameters
+    include_pre_merge_enumeration : bool    ----------
+        If True, the prompt asks the model to first enumerate all GIDs and timestamps across inputs
+        before producing the merged output (strong guardrail against omissions).
+
+    Returns
+    -------
+    types.Content
+        A content object containing the prompt text.
+    """
+    # Wrap and separate each summary with a strong delimiter
+    wrapped_blocks = [
+        f"### Summary {i}\n{s.strip()}"
+        for i, s in enumerate(summaries, start=1)
+    ]
+    delimiter = "\n\n--- SUMMARY DELIMITER ---\n\n"
+    joined = delimiter.join(wrapped_blocks)
+
+    # Optional pre-merge enumeration section for stronger coverage guarantees
+    pre_merge_section = ""
+    if include_pre_merge_enumeration:
+        pre_merge_section = """
+        Pre-Merge Enumeration (brief, before merging):
+        - List all GIDs appearing across input summaries.
+        - List all distinct timestamps/ranges appearing across input summaries.
+        Then proceed with the merged output.
+        """
+
     prompt = f"""
     Task:
-    You are merging these intermediate summaries into one consolidated summary.
-    Batches of summaries:
-    {' '.join(summaries)}
+    You will merge the following intermediate summaries into ONE comprehensive, consolidated summary.
     
-    Do NOT compress or abstract further. Your goal is to combine all details exactly as given.
+    Input Summaries (each separated by a delimiter):
+    {joined}
+    
+    Important:
+    - Treat each delimited block as a distinct source that MUST be fully integrated.
+    - Do NOT compress, paraphrase, or omit any detail. Copy and merge ALL information from ALL blocks.
     
     Rules:
-    1. Preserve ALL GIDs, timestamps, actions, and context from input summaries.
-    2. Merge duplicate GIDs by combining their timeframes and actions chronologically.
-    3. Keep all sections intact:
+    1) Preserve ALL identifiers and metadata:
+    - GIDs
+    - Timestamps (ranges and single points)
+    - Actions and interactions
+    - Context and observations
+    
+    2) Merge duplicate GIDs:
+    - Combine their timeframes and actions in strict chronological order (earliest to latest).
+    - Keep overlapping/conflicting entries; note discrepancies rather than dropping them.
+    
+    3) Maintain this exact output structure (no extra sections, no missing sections):
     **Overall Summary**
     **Detailed GID Actions**
     **Key Transitions and Observations**
     **Suspicious Activity Note**
     **Master GID List**
-    4. If input summaries are already condensed, DO NOT remove any detail—just merge.
-    5. Output must follow the same structure as above.
-    """
-    return types.Content(role="user", parts=[types.Part(text=prompt)])
+    
+    4) Chronological completeness:
+    - Include events from the very beginning of the first summary through the very end of the last summary.
+    - Do NOT skip any later chunks or leave gaps.
+    - If any timestamps are open-ended (e.g., "06:02–"), carry them forward when possible and keep them as-is if unresolved.
+    
+    5) Unify sections across summaries:
+    - Combine ALL "Overall Summary" texts into one unified description (no omissions).
+    - Merge ALL "Detailed GID Actions" into a single list sorted by timestamp.
+    - Merge ALL "Key Transitions and Observations" into one section.
+    - Merge ALL "Suspicious Activity Note" content into one section.
+    - Merge ALL "Master GID List" entries into one deduplicated list.
+    
+    6) Verification before finalizing:
+    - Ensure every GID appearing in the input summaries also appears in **Master GID List**.
+    - Ensure every timestamp (including ranges and single points) appears somewhere in **Detailed GID Actions**.
+    - Ensure events from the last input block (latest timestamps) appear near the end of **Detailed GID Actions**.
+    7) For overlapping or repeated time ranges (e.g., 03:40–08:20 and 03:40–10:40), include ALL entries; do not collapse or rewrite them.
+    8) Every GID in the Master GID List MUST have at least one entry in **Detailed GID Actions** (even if minimal).
+    
+    {pre_merge_section}
+    
+    Output:
+    Return ONE merged summary that strictly follows the structure above, is exhaustive, and preserves all details unchanged.
+    """.strip()
 
+    return types.Content(role="user", parts=[types.Part(text=prompt)])
+    
 def clean_summary(text):
     if not text:
         return ""
@@ -112,7 +180,7 @@ async def run_recursive_summarization(args):
     tomorrow = datetime.now().date() + timedelta(days=1)
     tomorrow_midnight = datetime.combine(tomorrow, datetime.min.time()) 
 
-    filter_expr = f'metadata["mode"]=="text" AND metadata["video_path"]=="Copy_of_D02_20250918150609_001_16mins.mp4" AND metadata["updated_summary"] IS NOT NULL'
+    filter_expr = f'metadata["mode"]=="text" AND metadata["updated_summary"] IS NOT NULL'
    
     print("Querying Milvus collection...")
     collection_data = milvus_manager.query(
@@ -140,7 +208,7 @@ async def run_recursive_summarization(args):
     # Initial batch-wise summarization of DB summaries
     intermediate_summaries = []
     batch_count = 0
-    for batch in query_summaries_from_db(collection_data, batch_size=5):
+    for batch in query_summaries_from_db(collection_data, batch_size=NUMBER_OF_INITIAL_SUMMARIES):
         batch_count += 1
         print(f"Processing batch {batch_count} with {len(batch)} summaries")
         print(f"  batch summaries {batch} ")
@@ -159,11 +227,11 @@ async def run_recursive_summarization(args):
     while len(intermediate_summaries) > 1:
         print(f"\n **** Starting recursive round {round_num} with {len(intermediate_summaries)} summaries ***")
         new_intermediates = []
-        for i in range(0, len(intermediate_summaries), 5):
-            batch = intermediate_summaries[i:i+5]
-            print(f"  Summarizing batch {i//5 + 1} of size {len(batch)}")
+        for i in range(0, len(intermediate_summaries), NUMBER_OF_RECURSIVE_SUMMARIES):
+            batch = intermediate_summaries[i:i+NUMBER_OF_RECURSIVE_SUMMARIES]
+            print(f"  Summarizing batch {i//NUMBER_OF_RECURSIVE_SUMMARIES + 1} of size {len(batch)}")
             print(f"  batch summaries {batch} ")
-            input_msg = make_user_message_recursive(batch)
+            input_msg = make_user_message_recursive(batch, include_pre_merge_enumeration=True)
             events = runner.run_async(user_id=user_id, session_id=session_id, new_message=input_msg)
             async for event in events:
                 if event.content:

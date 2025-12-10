@@ -32,7 +32,7 @@ async def run_enhance_summarization(args):
     milvus_manager = MilvusManager()    
   
 
-    filter_expr = f'metadata["mode"]=="text" AND metadata["video_path"]=="Copy_of_D02_20250918150609_001_16mins.mp4"'
+    filter_expr = f'metadata["mode"]=="text"'
    
     print("Querying Milvus collection...")
     collection_data = milvus_manager.query(
@@ -67,19 +67,9 @@ async def run_enhance_summarization(args):
         original_summary = meta.get("summary", "")
         start_time = meta.get("start_time")
         end_time = meta.get("end_time")
-        db_entry_timestamp = meta.get("db_entry_timestamp")
-        # print("db_entry_timestamp :", db_entry_timestamp)
-        # Convert to datetime object
-        timestamp = datetime.strptime(db_entry_timestamp, "%Y-%m-%d %H:%M:%S")
-        
-        # Subtract 10 minutes
-        new_timestamp = timestamp - timedelta(minutes=10)
-        
-        # Convert back to string if needed
-        new_db_entry_timestamp = new_timestamp.strftime("%Y-%m-%d %H:%M:%S")
         
         # Query Milvus for logs within this timeframe
-        filter_expr_track = f'metadata["event_creation_timestamp"] > "{new_db_entry_timestamp}" AND metadata["event_creation_timestamp"] < "{db_entry_timestamp}" AND metadata["last_update"] >= "{start_time}" AND metadata["last_update"] <= "{end_time}"'
+        filter_expr_track = f'metadata["last_update"] >= {start_time} AND metadata["last_update"] <= {end_time}'
         
         collection_log_data = milvus_manager.query(
             collection_name="tracking_logs",

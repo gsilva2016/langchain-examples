@@ -20,6 +20,8 @@ llm_serving = LiteLlm(
     model = agent_model_name,
     api_base = agent_model_endpoint,
     api_key="none",
+    stream=True,
+    timeout=2000,
     additional_drop_params=["extra_body"]
 )
 
