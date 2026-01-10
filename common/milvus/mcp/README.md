@@ -15,8 +15,6 @@ This MCP server exposes Milvus vector database operations as MCP tools. It uses 
 
 6. `upsert_data(collection_name, pks, vectors, metadatas, partition_name=None)`: Upsert data
 
-7. `drop_collection(collection_name)`: Delete a collection
-
 ## Usage
 
 ### Environment Variables

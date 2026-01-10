@@ -94,18 +94,6 @@ def query(collection_name: str, filter: str = "", limit: int = 100, output_field
         
     return result
 
-@mcp.tool()
-def drop_collection(collection_name: str):
-    """
-    Drop a collection in Milvus
-    """
-    print(f"Calling drop_collection with parameters: collection_name={collection_name}")
-    result = milvus.drop_collection(collection_name=collection_name)
-    
-    if DEBUG:
-        print(f"Drop Collection result: {result}")
-        
-    return result
 
 if __name__ == "__main__":
     mcp.run(transport=os.getenv("TRANSPORT", "streamable-http"))
