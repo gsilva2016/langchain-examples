@@ -10,7 +10,6 @@ video_chunks/
 MiniCPM_*/
 volumes/
 *.yaml
-*.yml
 *.xml
 *.json
 standalone_embed.sh
@@ -35,3 +34,4 @@ out*.txt
 bk/
 vids_*
 vllm/
+*.log

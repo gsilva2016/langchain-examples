@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HTTP_PROXY_ARG: ${HTTP_PROXY}
+        HTTPS_PROXY_ARG: ${HTTPS_PROXY}
+        DEBUG_ARG: ${DEBUG}
+    env_file: .env
+    image: mcp-server:latest
+    network_mode: host

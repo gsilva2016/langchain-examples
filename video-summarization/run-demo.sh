@@ -25,7 +25,12 @@ else
     wget https://github.com/intel-iot-devkit/sample-videos/raw/master/one-by-one-person-detection.mp4
 fi
 
+# Project root dir (lanfchain-examples)
 PROJECT_ROOT_DIR=..
+
+# Env path for modules 
+export ENV_PATH=$(pwd)/.env
+echo "Using ENV_PATH: $ENV_PATH"
 
 # check if Milvus is running
 if ! docker ps | grep -q "milvus"; then
