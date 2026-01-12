@@ -51,7 +51,7 @@ class MilvusManager:
                 else:
                     print(f"Collection {collection_name} already exists.")
                     client.load_collection(collection_name)
-                    return
+                    return {"status": "exists", "message": f"Collection {collection_name} already exists."}
 
             schema = client.create_schema(enable_dynamic_field=True)
             schema.add_field(field_name="pk", datatype=DataType.INT64, is_primary=True, auto_id=True)
@@ -71,13 +71,30 @@ class MilvusManager:
                 index_params=index_params,
                 schema=schema,
             )
+            
+            res = client.get_load_state(collection_name=collection_name)
+            print(f"Collection {collection_name} created with dimension {dim}: Load state: {res}")
+            
+            return {"status": "success", "message": f"Collection {collection_name} created.", "load_state": str(res)}
 
         except Exception as e:
             print(f"Error creating collection {collection_name}: {e}")
-            raise
-        finally:
-            res = client.get_load_state(collection_name=collection_name)
-            print(f"Collection {collection_name} with dimension {dim}: Load state: {res}")
+            return {"status": "error", "message": str(e)}
+    
+    def drop_collection(self, collection_name: str):
+        """
+        Drop a collection in Milvus
+        """
+        client = self._get_client()
+        try:
+            if client.has_collection(collection_name):
+                client.drop_collection(collection_name)
+                return {"status": "success", "message": f"Collection {collection_name} dropped."}
+            else:
+                return {"status": "error", "message": f"Collection {collection_name} does not exist."}
+        except Exception as e:
+            print(f"Error dropping collection {collection_name}: {e}")
+            return {"status": "error", "message": str(e)}
 
     def _ensure_partition(self, collection_name: str, partition_name: str):
         """

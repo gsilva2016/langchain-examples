@@ -1,0 +1,4 @@
+pymilvus==2.6.2
+python-dotenv
+fastmcp
+python-dotenv
