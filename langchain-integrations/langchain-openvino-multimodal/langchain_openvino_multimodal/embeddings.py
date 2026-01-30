@@ -368,7 +368,7 @@ class VisionEmbeddings(nn.Module):
         super().__init__()
         self.vision_model = vision_model
         self.vision_proj = vision_proj
-
+    
     def forward(self, pixel_values):
         vision_outputs = self.vision_model(pixel_values)
         image_cls = vision_outputs[0][:, 0, :]
@@ -520,6 +520,11 @@ class OpenVINOBlipEmbeddings(Embeddings):
         self.ov_vision_proj = core.compile_model(ov_vision_proj_model, self.ov_vision_device)
         self.ov_text_proj = core.compile_model(ov_text_proj_model, self.ov_text_device)
 
+        import threading
+        self.vision_lock = threading.Lock()
+        self.text_lock = threading.Lock()
+        print("Initialization complete.")
+
         print(f"{self.model_id} model initialized with vision device: {self.ov_vision_device}, text device: {self.ov_text_device}")
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
@@ -536,7 +541,9 @@ class OpenVINOBlipEmbeddings(Embeddings):
         if text:
             inputs = self.processor(text=text, truncation=True, return_tensors="pt")
             inputs = dict(inputs)
-            text_proj = self.ov_text_proj(inputs)
+            with self.text_lock:
+                text_proj = self.ov_text_proj(inputs)
+
             text_proj = list(text_proj.values())[0]
             text_proj = text_proj.squeeze(0)
             text_embedding_norm = text_proj / np.linalg.norm(text_proj)
@@ -567,7 +574,9 @@ class OpenVINOBlipEmbeddings(Embeddings):
             raise ValueError("Image must be a file path or a numpy array.")
         
         inputs = self.processor(images=image, return_tensors="pt")
-        image_proj = self.ov_vision_proj(inputs["pixel_values"])
+        with self.vision_lock:
+            image_proj = self.ov_vision_proj(inputs["pixel_values"])
+
         image_proj = list(image_proj.values())[0]
         image_proj = image_proj.squeeze(0)
         image_embedding_norm = image_proj / np.linalg.norm(image_proj)
