@@ -108,7 +108,7 @@ else
     conda init
     cd $CUR_DIR
 
-    neo/opencl drivers 25.40.35563.10
+    # neo/opencl drivers 25.40.35563.10
     mkdir neo
     cd neo
     cd neo
