@@ -23,8 +23,8 @@ if __name__ == '__main__':
                         help="Maximum number of tokens to be generated.",
                         default=500)
     parser.add_argument("-f", "--max_num_frames", type=int,
-                        help="Maximum number of frames to be sampled per chunk for inference. Set to a smaller number if OOM.",
-                        default=32)
+                        help="Maximum number of frames to be sampled per chunk for inference. Overrides MAX_NUM_FRAMES from .env if provided.",
+                        default=None)
     parser.add_argument("-c", "--chunk_duration", type=int,
                         help="Maximum length in seconds for each chunk of video.",
                         default=30)
@@ -43,9 +43,11 @@ if __name__ == '__main__':
     load_dotenv()
     run_vlm = os.getenv("RUN_VLM_PIPELINE", "TRUE").upper() == "TRUE"
     run_reid = os.getenv("RUN_REID_PIPELINE", "TRUE").upper() == "TRUE"
+    run_summary_merger = os.getenv("RUN_SUMMARY_MERGER", "FALSE").upper() == "TRUE"
     save_reid_videos = os.getenv("SAVE_REID_VIZ_VIDEOS", "FALSE").upper() == "TRUE"
     overwrite_milvus_collections = os.getenv("OVERWRITE_MILVUS_COLLECTION", "FALSE").upper() == "TRUE"
     print(f"Run VLM Pipeline: {run_vlm}, Run REID Pipeline: {run_reid}, Save REID Videos: {save_reid_videos}, Overwrite Milvus Collections: {overwrite_milvus_collections}")
+    max_num_frames = args.max_num_frames if args.max_num_frames is not None else int(os.getenv("MAX_NUM_FRAMES", 19))
     
     chunking_mechanism = os.getenv("CHUNKING_MECHANISM", "sliding_window")
     obj_detect_enabled = os.getenv("OBJ_DETECT_ENABLED", "TRUE").upper() == "TRUE"
@@ -132,7 +134,7 @@ if __name__ == '__main__':
             ))
  
         print("[Main]: Getting sampled frames")    
-        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, args.max_num_frames, save_frame=False,
+        sample_future = pool.submit(get_sampled_frames, chunk_queue, milvus_frames_queue, vlm_queue, max_num_frames, save_frame=False,
                                     resolution=args.resolution)
         
         if run_vlm:
@@ -193,8 +195,12 @@ if __name__ == '__main__':
             
             # Summarize the full video, using the subsections summaries from each chunk
             # Post an HTTP request to OVMS for summary merger (shown below)
-            print("[Main]: Starting chunk summary merger")
-            merge_future = pool.submit(send_summary_request, merger_queue)
+            if run_summary_merger:
+                print("[Main]: Starting chunk summary merger")
+                merge_future = pool.submit(send_summary_request, merger_queue)
+            else:
+                print("[Main]: Skipping chunk summary merger (disabled)")
+                merge_future = None
 
         for future in futures:
             future.result()
@@ -210,7 +216,8 @@ if __name__ == '__main__':
             milvus_frames_future.result()
             cs_future.result()
             milvus_summaries_future.result()
-            merge_future.result()
+            if merge_future:
+                merge_future.result()
 
         for tf in tracking_futures:
             tf.result()

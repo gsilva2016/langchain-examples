@@ -92,7 +92,8 @@ if [ "$1" == "--skip" ]; then
 	activate_conda
 
 else
-    echo "Installing dependencies"    
+    echo "Installing dependencies"
+    
     sudo DEBIAN_FRONTEND=noninteractive apt update
     sudo DEBIAN_FRONTEND=noninteractive apt install git ffmpeg wget -y
 
@@ -107,36 +108,47 @@ else
     conda init
     cd $CUR_DIR
 
-    # neo/opencl drivers 24.45.31740.9
+    # neo/opencl drivers 25.40.35563.10
     mkdir neo
     cd neo
-    wget https://github.com/intel/intel-graphics-compiler/releases/download/v2.5.6/intel-igc-core-2_2.5.6+18417_amd64.deb
-    wget https://github.com/intel/intel-graphics-compiler/releases/download/v2.5.6/intel-igc-opencl-2_2.5.6+18417_amd64.deb
-    wget https://github.com/intel/compute-runtime/releases/download/24.52.32224.5/intel-level-zero-gpu-dbgsym_1.6.32224.5_amd64.ddeb
-    wget https://github.com/intel/compute-runtime/releases/download/24.52.32224.5/intel-level-zero-gpu_1.6.32224.5_amd64.deb
-    wget https://github.com/intel/compute-runtime/releases/download/24.52.32224.5/intel-opencl-icd-dbgsym_24.52.32224.5_amd64.ddeb
-    wget https://github.com/intel/compute-runtime/releases/download/24.52.32224.5/intel-opencl-icd_24.52.32224.5_amd64.deb
-    wget https://github.com/intel/compute-runtime/releases/download/24.52.32224.5/libigdgmm12_22.5.5_amd64.deb
+    wget https://github.com/intel/intel-graphics-compiler/releases/download/v2.20.5/intel-igc-core-2_2.20.5+19972_amd64.deb
+    wget https://github.com/intel/intel-graphics-compiler/releases/download/v2.20.5/intel-igc-opencl-2_2.20.5+19972_amd64.deb
+    wget https://github.com/intel/compute-runtime/releases/download/25.40.35563.10/intel-ocloc-dbgsym_25.40.35563.10-0_amd64.ddeb
+    wget https://github.com/intel/compute-runtime/releases/download/25.40.35563.10/intel-ocloc_25.40.35563.10-0_amd64.deb
+    wget https://github.com/intel/compute-runtime/releases/download/25.40.35563.10/intel-opencl-icd-dbgsym_25.40.35563.10-0_amd64.ddeb
+    wget https://github.com/intel/compute-runtime/releases/download/25.40.35563.10/intel-opencl-icd_25.40.35563.10-0_amd64.deb
+    wget https://github.com/intel/compute-runtime/releases/download/25.40.35563.10/libigdgmm12_22.8.2_amd64.deb
+    wget https://github.com/intel/compute-runtime/releases/download/25.40.35563.10/libze-intel-gpu1-dbgsym_25.40.35563.10-0_amd64.ddeb
+    wget https://github.com/intel/compute-runtime/releases/download/25.40.35563.10/libze-intel-gpu1_25.40.35563.10-0_amd64.deb
     sudo dpkg -i *.deb
     # sudo apt install ocl-icd-libopencl1
     cd ..
 	
 fi
 
+# Install llama-cpp for hosting Qwen 2.5 VL 7B
+bash install-llama-cpp.sh
+
 # Install OpenVINO Model Server (OVMS) on baremetal
-if [ "$1" == "--skip" ]; then
-    bash install-ovms.sh --skip
+if [ "$RUN_SUMMARY_MERGER" == "TRUE" ]; then
+    echo "Installing OVMS for summary merger"
+    if [ "$1" == "--skip" ]; then
+        bash install-ovms.sh --skip
+    else
+        bash install-ovms.sh
+    fi
+
+    if [ $? -ne 0 ]; then
+        echo "OpenVINO Model Server (OVMS) installation failed. Please check the logs."
+        exit 1
+    fi
+
+    echo "OpenVINO Model Server (OVMS) installation and creation of optimized model files completed successfully."
+    echo ""
 else
-    bash install-ovms.sh
+    echo "Skipping OVMS installation (summary merger disabled)"
+    echo ""
 fi
-
-if [ $? -ne 0 ]; then
-    echo "OpenVINO Model Server (OVMS) installation failed. Please check the logs."
-    exit 1
-fi
-
-echo "OpenVINO Model Server (OVMS) installation and creation of optimized model files completed successfully."
-echo ""
 
 # Download tracking models
 mkdir -p tracker_models/person-reidentification-retail-0287/FP16/
@@ -159,8 +171,11 @@ fi
 
 echo 'y' | conda install pip
 pip install -r requirements.txt
-echo "Downloading and Converting detection model"
-bash ../common/rtsploader/download_model.sh
+
+if [ "$OBJ_DETECT_ENABLED" == "TRUE" ]; then
+    echo "Downloading and Converting detection model"
+    bash ../common/rtsploader/download_model.sh
+fi
 
 echo "All installation steps completed successfully."
 

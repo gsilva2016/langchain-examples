@@ -62,12 +62,24 @@ if [ "$1" == "--run_rag" ] || [ "$2" == "--run_rag" ]; then
 else
     if [ "$RUN_VLM_PIPELINE" == "TRUE" ]; then
         echo "Running VLM pipeline on video"
-        bash run-ovms.sh
-
+        bash run-llama-server.sh
         if [ $? -ne 0 ]; then
-            echo "OVMS setup failed. Please check the logs."
+            echo "Llama-cpp server setup failed. Please check the logs."
             exit 1
         fi
+
+        if [ "$RUN_SUMMARY_MERGER" == "TRUE" ]; then
+            echo "Starting OVMS for summary merger"
+            bash run-ovms.sh
+
+            if [ $? -ne 0 ]; then
+                echo "OVMS setup failed. Please check the logs."
+                exit 1
+            fi
+        else
+            echo "Skipping OVMS (summary merger disabled)"
+        fi
+
     else
         echo "Skipping VLM pipeline on video"
     fi
@@ -81,7 +93,14 @@ else
 fi
 
 # terminate services
-if docker ps --filter "name=$OVMS_CONTAINER_NAME" --format '{{.Names}}' | grep -q $OVMS_CONTAINER_NAME; then
-    echo "Terminating OVMS container: $OVMS_CONTAINER_NAME"
-    docker stop $OVMS_CONTAINER_NAME
+if [ "$RUN_VLM_PIPELINE" == "TRUE" ]; then
+    kill -9 -$(cat /tmp/llama_server.pid) 2>/dev/null; pkill -9 llama-server; rm -f /tmp/llama_server.pid
+    echo "Terminating llama server."
+
+    if [ "$RUN_SUMMARY_MERGER" == "TRUE" ]; then
+        if docker ps --filter "name=$OVMS_CONTAINER_NAME" --format '{{.Names}}' | grep -q $OVMS_CONTAINER_NAME; then
+            echo "Terminating OVMS container: $OVMS_CONTAINER_NAME"
+            docker stop $OVMS_CONTAINER_NAME
+        fi
+    fi
 fi

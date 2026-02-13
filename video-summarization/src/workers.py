@@ -11,6 +11,7 @@ import base64
 import time
 import os
 import queue
+from openai import OpenAI
 
 from common.tracker.person_detection import PersonDetector
 from common.tracker.tracking import ReIDExtractor
@@ -38,7 +39,7 @@ load_dotenv()
 
 # Thresholds
 OVMS_ENDPOINT = os.environ.get("OVMS_ENDPOINT", None)
-VLM_MODEL = os.environ.get("VLM_MODEL", "openbmb/MiniCPM-V-2_6")
+LLAMA_CPP_ENDPOINT = os.environ.get("LLAMA_CPP_ENDPOINT", "http://localhost:8080/v1")
 TRACKING_LOGS_GENERATION_TIME_SECS = float(os.environ.get("TRACKING_LOGS_GENERATION_TIME_SECS", 1.0))
 MAX_EVENTS_BATCH = int(os.environ.get("MAX_EVENTS_BATCH", 10))
 EXIT_GAP_SECS = float(os.environ.get("EXIT_GAP_SECS", 3.0))
@@ -228,6 +229,10 @@ def get_sampled_frames(chunk_queue: queue.Queue, milvus_frames_queue: queue.Queu
 
 def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Queue, merger_queue: queue.Queue, 
                              prompt: str, max_new_tokens: int, obj_detect_enabled: bool):
+
+    # Start the OpenAI client for VLM requests
+    client = OpenAI(base_url=LLAMA_CPP_ENDPOINT, api_key="default-key")
+    print(f"[VLM]: Chunk generation occuring at: {LLAMA_CPP_ENDPOINT}")
     
     while True:        
         try:
@@ -279,35 +284,23 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
         # Prepare the text prompt content for the VLM request
         content.append({"type": "text", "text": prompt})
 
-        # Package all request data for the VLM
-        data = {
-            "model": VLM_MODEL,
-            "max_tokens": max_new_tokens,
-            "temperature": 0,
-            "stream": False,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a helpful assistant. Respond in english."
-                },
-                {
-                    "role": "user",
-                    "content": content 
-                }
-            ]
-        }
-
         # Send the request to the VLM model endpoint
-        response = requests.post(OVMS_ENDPOINT, 
-                                 json=data, 
-                                 headers={"Content-Type": "application/json"})
-
-        if response.status_code == 200:
-            output_json = response.json()
-            output_text = output_json["choices"][0]["message"]["content"]
-            print("[VLM]: Model response:", output_json)
-        else:
-            print("[VLM]: Error:", response.status_code, response.text)
+        try:
+            response = client.chat.completions.create(
+                model="qwen",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": content
+                    }
+                ],
+                max_tokens=max_new_tokens
+            )
+            
+            output_text = response.choices[0].message.content
+            print("[VLM]: Model response:", output_text)
+        except Exception as e:
+            print(f"[VLM]: Error generating summary: {e}")
             continue
         
         chunk_summary = {
@@ -326,7 +319,7 @@ def generate_chunk_summaries(vlm_q: queue.Queue, milvus_summaries_queue: queue.Q
     print("[VLM]: Ending service")
     milvus_summaries_queue.put(None)
     merger_queue.put(None)
-        
+
 def generate_chunks(video_path: str, chunk_duration: int, chunk_overlap: int, chunk_queue: queue.Queue,
                     tracking_chunk_queue: queue.Queue, obj_detect_enabled: bool, obj_detect_path: str, 
                     obj_detect_sample_rate: int, obj_detect_threshold: float, 

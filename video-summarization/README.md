@@ -7,10 +7,10 @@ Uses: OpenVINO Model Server, open source/custom Langchain packages, MiniCPM-V-2_
 This repository provides a modular pipeline for video analysis and summarization, combining CV and genAI techniques. The main modules include:
 
 - **Person Tracking & Re-Identification (ReID):** Uses DeepSORT and ReID models to detect, track, and uniquely identify individuals across video frames. Uses Milvus to reconcile across same/multiple inputs.
-- **Summarization:** Employs vision-language models (MiniCPM-V-2_6) and large language models (Llama-3.2-3B) to generate concise, human-readable summaries of video content.
+- **Summarization:** Employs vision-language models (Qwen2.5-VL-7B-Instruct) and large language models (Llama-3.2-3B) to generate concise, human-readable summaries of video content.
 - **Embedding & Vector Database:** Utilizes BLIP for generating embeddings from text and images, storing them in Milvus for efficient similarity search and retrieval.
 - **Vector Search/Retriever** Enables search and retrieval over ingested video data using both text and image queries.
-- **Model Serving:** Integrates OpenVINO Model Server (OVMS) for efficient model inference and deployment.
+- **Model Serving:** Integrates Llama-cpp and OpenVINO Model Server (OVMS) for efficient model inference and deployment.
 
 Each module can be enabled or disabled independently, allowing flexible experimentation and customization for different video analytics scenarios. (Refer to the [Run Video Pipeline](#run-video-pipeline) section.)
 
@@ -26,15 +26,11 @@ Each module can be enabled or disabled independently, allowing flexible experime
 
 ## Installation and .env (environment variable file) Configuration
 
-1. First, follow the steps on the [MiniCPM-V-2_6 HuggingFace Page](https://huggingface.co/openbmb/MiniCPM-V-2_6) to gain
-access to the model. For more information on user access tokens for access to gated models
-see [here](https://huggingface.co/docs/hub/en/security-tokens).
+1. If using the summary merger tool to (uncommon), please first gain access to [Llama3.2](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) group of models on Hugging Face. 
 
-2. Gain access to [Llama3.2](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) group of models on Hugging Face. 
+2. Next, open `.env` file in this current directory. Here you will find all the variables which need to set in order to run the Video Summarizer. Default values have already been set.
 
-3. Next, open `.env` file in this current directory. Here you will find all the variables which need to set in order to run the Video Summarizer. Default values have already been set.
-
-4. The tracking/ReID modules require finetuning the DeepSORT configuration parameters as per the input video/camera stream being tested.
+3. The tracking/ReID modules require finetuning the DeepSORT configuration parameters as per the input video/camera stream being tested.
     
     For the DeepSORT module, please finetune these values in the .env.
 
@@ -116,6 +112,13 @@ HUGGINGFACE_TOKEN=
 # Conda environment name, please change if you would like to use a different name
 CONDA_ENV_NAME=ovlangvidsumm
 
+# llama-cpp server configuration
+LLAMA_CPP_INSTALL_DIR="llama-cpp-server/"
+LLAMA_CPP_ENDPOINT="http://localhost:8080/v1"
+LLAMA_CPP_PACKAGE_URL="https://github.com/ipex-llm/ipex-llm/releases/download/v2.3.0-nightly/llama-cpp-ipex-llm-2.3.0b20250724-ubuntu-core.tgz"
+LLAMA_CPP_MODEL_URL="https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
+LLAMA_CPP_MMPROJ_URL="https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"
+
 # OVMS endpoint for all models
 OVMS_ENDPOINT="http://localhost:8013/v3/chat/completions"
 OVMS_GRPC_PORT=9013
@@ -129,6 +132,8 @@ RUN_VLM_PIPELINE="TRUE"
 RUN_REID_PIPELINE="TRUE"
 # If True, saves re-identification visualization videos in chunks directory
 SAVE_REID_VIZ_VIDOES="FALSE"
+# If False, Doesn't run summary merger and OVMS server
+RUN_SUMMARY_MERGER="FALSE"
 
 ####### Video ingestion configuration
 OBJ_DETECT_ENABLED="FALSE"
@@ -179,15 +184,11 @@ IMG_EMBEDDING_DEVICE="GPU"
 # Input video file, resolution, and prompt for summarization
 
 # VLM model
-VLM_MODEL="openbmb/MiniCPM-V-2_6"
-
-# Device for the VLM model: CPU, GPU
-VLM_DEVICE="GPU"
-
 INPUT_FILE="one-by-one-person-detection.mp4"
 
-RESOLUTION_X=480
-RESOLUTION_Y=270
+RESOLUTION_X=384
+RESOLUTION_Y=216
+MAX_NUM_FRAMES=19
 
 PROMPT='As an expert investigator, please analyze this video. Summarize the video, highlighting any shoplifting or suspicious activity. The output must contain the following 3 sections: Overall Summary, Activity Observed, Potential Suspicious Activity. It should be formatted similar to the following example:
 
@@ -229,10 +230,10 @@ REID_COLLECTION_NAME="reid_data"
 TRACKING_COLLECTION_NAME="tracking_logs"
 
 # Similarity thresholds for re-identification and duplicate detection (detailed explanations in the README)
-REID_SIM_SCORE_THRESHOLD=0.67
-TOO_SIMILAR_THRESHOLD=0.96
-AMBIGUITY_MARGIN=0.02
-DIVERGENCE_THRESHOLD=0.8
+REID_SIM_SCORE_THRESHOLD=0.6
+TOO_SIMILAR_THRESHOLD=0.95
+AMBIGUITY_MARGIN=0.06
+DIVERGENCE_THRESHOLD=0.85
 
 # Interval for creating partitions in Milvus (in hours). If a partition for the current hour doesn't exist, it will be created.
 # This helps in organizing data and improving query performance.
@@ -241,7 +242,7 @@ PARTITION_CREATION_INTERVAL=1 # in hours
 # Data will be flushed to Milvus at this interval to ensure it's saved and available for queries.
 TRACKING_LOGS_GENERATION_TIME_SECS=1
 # If True, overwrites the existing Milvus collection. Use with caution as this will delete existing data. Useful for testing.
-OVERWRITE_MILVUS_COLLECTION="TRUE"
+OVERWRITE_MILVUS_COLLECTION="FALSE"
 
 ####### Parameters for summarization with --run_rag option
 
@@ -306,7 +307,7 @@ Download and install the latest drivers from:
 [https://github.com/intel/linux-npu-driver/releases](https://github.com/intel/linux-npu-driver/releases)
 
 
-## Convert and Save Optimized MiniCPM-V-2_6 VLM and Llama-3.2-3B LLM
+## Convert and Save the Llama-3.2-3B LLM
 
 This section can be skipped if you ran `install.sh` the first time. The `install.sh` script runs this command as part of 
 its setup. This section is to give the user flexibility to tweak the `export_model.py` command for certain model parameters to run on OVMS.
@@ -326,10 +327,7 @@ curl https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/heads/r
 
 mkdir -p models
 
-1. # export miniCPM model on GPU
-python export_model.py text_generation --source_model openbmb/MiniCPM-V-2_6 --weight-format int8 --config_file_path models/config.json --model_repository_path models --target_device GPU --cache 2 --pipeline_type VLM
-
-2. # export LLAMA3.2 model on GPU
+# export LLAMA3.2 model on GPU
 python export_model.py text_generation --source_model meta-llama/Llama-3.2-3B-Instruct --weight-format int4 --config_file_path models/config.json --model_repository_path models --target_device GPU --cache 2 --pipeline_type LM --overwrite_models
 
 OR 
@@ -338,9 +336,13 @@ OR
 python export_model.py text_generation --source_model meta-llama/Llama-3.2-3B-Instruct --config_file_path models/config.json --model_repository_path models --target_device NPU --max_prompt_len 1500 --pipeline_type LM --overwrite_models
 ```
 
-## Model Server
+## Model Serving
 
-Pipeline uses [OVMS (OpenVINO Model Server)](https://github.com/openvinotoolkit/model_server) for serving the VLM and LLM.
+The pipeline uses [IPEX-LLM llama-cpp](https://github.com/ipex-llm/ipex-llm) to host the vision-language model (Qwen2.5-VL-7B-Instruct) for video analysis.
+
+The server is automatically started when `RUN_VLM_PIPELINE=TRUE` and shut down after pipeline completion. Configuration is managed through `.env` variables (`LLAMA_CPP_ENDPOINT`, `LLAMA_CPP_INSTALL_DIR`, etc.).
+
+The pipeline also uses [OVMS (OpenVINO Model Server)](https://github.com/openvinotoolkit/model_server) for serving the LLM (Llama 3.2).
 
 For more information on OVMS parameters and usage with Docker, see the official documentation: [Deploying Model Server in Docker Container](https://docs.openvino.ai/2025/model-server/ovms_docs_deploying_server_docker.html)
 
