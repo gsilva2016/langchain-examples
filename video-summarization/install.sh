@@ -111,7 +111,6 @@ else
     # neo/opencl drivers 25.40.35563.10
     mkdir neo
     cd neo
-    cd neo
     wget https://github.com/intel/intel-graphics-compiler/releases/download/v2.20.5/intel-igc-core-2_2.20.5+19972_amd64.deb
     wget https://github.com/intel/intel-graphics-compiler/releases/download/v2.20.5/intel-igc-opencl-2_2.20.5+19972_amd64.deb
     wget https://github.com/intel/compute-runtime/releases/download/25.40.35563.10/intel-ocloc-dbgsym_25.40.35563.10-0_amd64.ddeb
