@@ -103,7 +103,7 @@ else
     [ -e $miniforge_script ] && rm $miniforge_script
     wget "https://github.com/conda-forge/miniforge/releases/latest/download/$miniforge_script"
     bash $miniforge_script -b -u
-    used to activate conda install
+    # used to activate conda install
     activate_conda
     conda init
     cd $CUR_DIR
