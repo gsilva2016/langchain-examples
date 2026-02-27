@@ -223,10 +223,9 @@ if __name__ == '__main__':
 
         chunk_queue.put(None)
         
+        sample_future.result()
         for video_id, video in videos.items():
             tracking_chunk_queues[video_id].put(None)
-                
-        sample_future.result()
         
         if run_vlm:
             milvus_frames_future.result()
@@ -254,3 +253,4 @@ if __name__ == '__main__':
             process_logs_future.result()
 
         print("[Main]: All tasks completed")
+
